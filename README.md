@@ -73,6 +73,18 @@ nltk.download('averaged_perceptron_tagger', download_dir='/workspace/kouyou/data
 "
 export NLTK_DATA=/workspace/kouyou/datasets/nltk_data
 ```
+```
+python -c "
+import nltk
+nltk.download('punkt_tab', download_dir='/workspace/kouyou/datasets/nltk_data')
+"
+```
+```
+python -c "
+import nltk
+nltk.download('averaged_perceptron_tagger_eng', download_dir='/workspace/kouyou/datasets/nltk_data')
+"
+```
 
 #### MM-GroudingDINOの重みをダウンロード
 ```
@@ -108,10 +120,31 @@ python demo/image_demo.py demo_images/animals.png \
 # ゼロショットCOCO2017
 python tools/test.py configs/mm_grounding_dino/grounding_dino_swin-t_pretrain_obj365.py \
         grounding_dino_swin-t_pretrain_obj365_goldg_grit9m_v3det_20231204_095047-b448804b.pth
-
 ```
 
 
+#### 学習の実行（cat_dataset）
+cat_datasetを用いて学習を行えるかを確認する．
+まず，cat_datasetのダウンロードを行います．
+以下のコマンドを実行してください．
+```
+cd /workspace/kouyou/datasets
+wget https://download.openmmlab.com/mmyolo/data/cat_dataset.zip
+unzip cat_dataset.zip
+mkdir cat_dataset
+mv ./images/ ./cat_dataset
+mv ./labels/ ./cat_dataset
+mv ./annotations/ ./cat_dataset
+```
+続いて単一画像での可視化を行います．
+```
+export NLTK_DATA=/workspace/kouyou/datasets/nltk_data
+python demo/image_demo.py /workspace/kouyou/datasets/cat_dataset/images/IMG_20211205_120756.jpg configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_cat.py --weights grounding_dino_swin-t_pretrain_obj365_goldg_grit9m_v3det_20231204_095047-b448804b.pth --texts cat.
+```
+ファインチューニングを行います．
+```
+python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_cat.py --work-dir cat_work_dir
+```
 
 
 
