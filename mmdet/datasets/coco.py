@@ -62,34 +62,59 @@ class CocoDataset(BaseDetDataset):
         Returns:
             List[dict]: A list of annotation.
         """  # noqa: E501
+
+        #------------ アノテーションファイルを読み込む ------------
         with get_local_path(
                 self.ann_file, backend_args=self.backend_args) as local_path:
             self.coco = self.COCOAPI(local_path)
+        
+        # print("self.coco: ", self.coco)
+        # assert False
+
+        
+        #------------ カテゴリ情報の整理 ------------
         # The order of returned `cat_ids` will not
         # change with the order of the `classes`
+        
+        # クラス名からカテゴリIDを獲得
         self.cat_ids = self.coco.get_cat_ids(
             cat_names=self.metainfo['classes'])
+        
+        # カテゴリID → ラベル番号の対応表を作る
         self.cat2label = {cat_id: i for i, cat_id in enumerate(self.cat_ids)}
+
+        # カテゴリ→画像のマップをコピー
         self.cat_img_map = copy.deepcopy(self.coco.cat_img_map)
 
+
+        #------------ 全画像をループして，各画像情報を整形しリストに保存 ------------
+        # ループ前に初期化
         img_ids = self.coco.get_img_ids()
         data_list = []
         total_ann_ids = []
+
+        # ループして各画像について処理
         for img_id in img_ids:
+
+            # 画像情報を取得
             raw_img_info = self.coco.load_imgs([img_id])[0]
             raw_img_info['img_id'] = img_id
 
+            # アノテーション情報を取得
             ann_ids = self.coco.get_ann_ids(img_ids=[img_id])
             raw_ann_info = self.coco.load_anns(ann_ids)
             total_ann_ids.extend(ann_ids)
 
+            # 情報を整形してリストに追加
+            # parse_data_info は
             parsed_data_info = self.parse_data_info({
-                'raw_ann_info':
-                raw_ann_info,
-                'raw_img_info':
-                raw_img_info
+                'raw_ann_info': raw_ann_info,
+                'raw_img_info': raw_img_info
             })
             data_list.append(parsed_data_info)
+        
+
+        #------------ 重複チェック，後片付け ------------
         if self.ANN_ID_UNIQUE:
             assert len(set(total_ann_ids)) == len(
                 total_ann_ids
@@ -99,6 +124,8 @@ class CocoDataset(BaseDetDataset):
 
         return data_list
 
+    
+    # 1枚の画像の情報を，整形された形式に変換する処理
     def parse_data_info(self, raw_data_info: dict) -> Union[dict, List[dict]]:
         """Parse raw annotation to target format.
 
@@ -108,58 +135,104 @@ class CocoDataset(BaseDetDataset):
         Returns:
             Union[dict, List[dict]]: Parsed annotation.
         """
+
+        #------------ 入力を取り出して，入れ物を用意 ------------
+        # 画像とアノテーション情報を取り出す
         img_info = raw_data_info['raw_img_info']
         ann_info = raw_data_info['raw_ann_info']
 
+        # 整形結果を格納する辞書の初期化
         data_info = {}
 
+        
+        #------------ 画像の基本情報を詰める ------------
         # TODO: need to change data_prefix['img'] to data_prefix['img_path']
+        
+        # 画像パスの構築
         img_path = osp.join(self.data_prefix['img'], img_info['file_name'])
+        # print("img_path: ", img_path)  # img_path:  /workspace/kouyou/datasets/cat_dataset/images/IMG_20211024_223313.jpg
+
+        # セグメンテーションマップのパスの構築
         if self.data_prefix.get('seg', None):
             seg_map_path = osp.join(
                 self.data_prefix['seg'],
                 img_info['file_name'].rsplit('.', 1)[0] + self.seg_map_suffix)
         else:
             seg_map_path = None
+
+        # 結果を data_info に詰める
         data_info['img_path'] = img_path
         data_info['img_id'] = img_info['img_id']
         data_info['seg_map_path'] = seg_map_path
         data_info['height'] = img_info['height']
         data_info['width'] = img_info['width']
 
+
+        #------------ Grouding DINO 特有のテキスト情報を詰める ------------
+        # print("self.return_classes: ", self.return_classes)   # self.return_classes:  True
         if self.return_classes:
+            
+            # テキスト（クラス名）
             data_info['text'] = self.metainfo['classes']
+            
+            # キャプションプロンプト
             data_info['caption_prompt'] = self.caption_prompt
+            
+            # カスタムエンティティのフラグ
             data_info['custom_entities'] = True
 
+
+        #------------ 各物体のアノテーション（bboxとラベル）を処理 ------------
+        
+        # 各物体の情報を格納するためのリスト
         instances = []
+
+        # ループの枠組み
         for i, ann in enumerate(ann_info):
+            
+            # 画像の情報を貯めるリスト
             instance = {}
 
+            # ignoreフラグが立っていればスキップ
             if ann.get('ignore', False):
                 continue
+
+            # 画像範囲との重なりがゼロならスキップ
             x1, y1, w, h = ann['bbox']
             inter_w = max(0, min(x1 + w, img_info['width']) - max(x1, 0))
             inter_h = max(0, min(y1 + h, img_info['height']) - max(y1, 0))
             if inter_w * inter_h == 0:
                 continue
+
+            # 物体の面積が0以下，または幅が高さが1ピクセル未満の場合スキップ
             if ann['area'] <= 0 or w < 1 or h < 1:
                 continue
+            
+            # 対象クラス以外は除外
             if ann['category_id'] not in self.cat_ids:
                 continue
+
+            # bboxの座標形式を，COOC形式[x1, y1, w, h]からmmdet形式[x1, y1, x2, y2]に変換
             bbox = [x1, y1, x1 + w, y1 + h]
 
+            # iscrowdフラグの処理
             if ann.get('iscrowd', False):
                 instance['ignore_flag'] = 1
             else:
                 instance['ignore_flag'] = 0
+            
+            # bboxとラベルを詰める
             instance['bbox'] = bbox
             instance['bbox_label'] = self.cat2label[ann['category_id']]
 
+            # セグメンテーションマスク
             if ann.get('segmentation', None):
                 instance['mask'] = ann['segmentation']
 
+            # インスタンスリストに追加
             instances.append(instance)
+        
+        # 全ての物体情報をdata_infoに詰めて返す
         data_info['instances'] = instances
         return data_info
 

@@ -40,8 +40,6 @@ class BaseDetDataset(BaseDataset):
         self.return_classes = return_classes
         self.caption_prompt = caption_prompt
 
-        assert False
-
         if self.caption_prompt is not None:
             assert self.return_classes, \
                 'return_classes must be True when using caption_prompt'
@@ -53,6 +51,8 @@ class BaseDetDataset(BaseDataset):
             )
         super().__init__(*args, **kwargs)
 
+    
+    # 画像データまでのパスや，アノテーション情報の読み込み
     def full_init(self) -> None:
         """Load annotation file and set ``BaseDataset._fully_initialized`` to
         True.
@@ -73,10 +73,17 @@ class BaseDetDataset(BaseDataset):
             - serialize_data: Serialize ``self.data_list`` if
             ``self.serialize_data`` is True.
         """
+
+        #------------ すでに full_init 処理が済んでいるなら，なにもせずに終了 ------------
         if self._fully_initialized:
             return
+        
+        
+        #------------ アノテーション情報の読み込み ------------
         # load data information
         self.data_list = self.load_data_list()
+
+
         # get proposals from file
         if self.proposal_file is not None:
             self.load_proposals()
