@@ -83,17 +83,25 @@ class BaseDetDataset(BaseDataset):
         # load data information
         self.data_list = self.load_data_list()
 
-
+        
+        #------------ プロポーザルの読み込み(条件付き) ------------
         # get proposals from file
         if self.proposal_file is not None:
             self.load_proposals()
+        
+
+        #------------ filter_data によるデータの絞り込み ------------
         # filter illegal data, such as data that has no annotations.
         self.data_list = self.filter_data()
 
+
+        #------------ データの切り出し(条件付き) ------------
         # Get subset data according to indices.
         if self._indices is not None:
             self.data_list = self._get_unserialized_subset(self._indices)
 
+
+        #------------ データのシリアライズ(条件付き) ------------
         # serialize data_list
         if self.serialize_data:
             self.data_bytes, self.data_address = self._serialize_data()
