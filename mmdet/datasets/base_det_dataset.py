@@ -39,6 +39,9 @@ class BaseDetDataset(BaseDataset):
         self.backend_args = backend_args
         self.return_classes = return_classes
         self.caption_prompt = caption_prompt
+
+        assert False
+
         if self.caption_prompt is not None:
             assert self.return_classes, \
                 'return_classes must be True when using caption_prompt'

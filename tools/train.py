@@ -129,7 +129,8 @@ def main():
     
     # print("runner: ", runner)   # runner:  <mmengine.runner.runner.Runner object at 0x7f9afac0b9a0>
 
-    # start training
+    #--------- runner を使って学習を実行 ---------
+    # /opt/conda/lib/python3.10/site-packages/mmengine/runner/runner.py
     runner.train()
 
 
