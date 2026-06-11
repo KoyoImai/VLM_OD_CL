@@ -79,7 +79,7 @@ class BaseDetDataset(BaseDataset):
             return
         
         
-        #------------ アノテーション情報の読み込み ------------
+        #------------ 画像情報とアノテーション情報の読み込み ------------
         # load data information
         self.data_list = self.load_data_list()
 
