@@ -25,6 +25,8 @@ train_pipeline = [
             [
                 dict(
                     type='RandomChoiceResize',
+                    # The radio of all image in train dataset < 7
+                    # follow the original implement
                     scales=[(400, 4200), (500, 4200), (600, 4200)],
                     keep_ratio=True),
                 dict(
@@ -56,19 +58,19 @@ train_dataloader = dict(
         return_classes=True,
         pipeline=train_pipeline,
         filter_cfg=dict(filter_empty_gt=False, min_size=32),
-        ann_file='train/_annotations.coco.json',
+        ann_file='train/_annotations.coco_fixed.json',
         data_prefix=dict(img='train/')))
 
 val_dataloader = dict(
     dataset=dict(
         metainfo=metainfo,
         data_root=data_root,
-        ann_file='valid/_annotations.coco.json',
+        ann_file='valid/_annotations.coco_fixed.json',
         data_prefix=dict(img='valid/')))
 
 test_dataloader = val_dataloader
 
-val_evaluator = dict(ann_file=data_root + 'valid/_annotations.coco.json')
+val_evaluator = dict(ann_file=data_root + 'valid/_annotations.coco_fixed.json')
 test_evaluator = val_evaluator
 
 max_epoch = 20

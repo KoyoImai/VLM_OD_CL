@@ -50,5 +50,8 @@ Roboflow100データセットを使用した，ドメイン増加の物体検出
 使用するデータセットは`rf100/smoke-uvylj`とする．
 
 #### `configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_smoke.py`の作成
+`configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_cat.py`を参考に，`configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_smoke.py`を作成する．
 
-
+また，それに加えて，Roboflow100データセットに含まれる`_annotations.coco.json`の修正も行う必要がある．
+`_annotations.coco.json`には，ダミーカテゴリが含まれるためカテゴリ数（クラス数）が一致せず学習時にエラーが発生する．
+そのため，`_annotations.coco_fixed.json`というファイルに内容をコピーし修正，修正した`_annotations.coco_fixed.json`を使用して学習と評価を動かす．
