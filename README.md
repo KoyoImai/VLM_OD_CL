@@ -55,3 +55,22 @@ Roboflow100データセットを使用した，ドメイン増加の物体検出
 また，それに加えて，Roboflow100データセットに含まれる`_annotations.coco.json`の修正も行う必要がある．
 `_annotations.coco.json`には，ダミーカテゴリが含まれるためカテゴリ数（クラス数）が一致せず学習時にエラーが発生する．
 そのため，`_annotations.coco_fixed.json`というファイルに内容をコピーし修正，修正した`_annotations.coco_fixed.json`を使用して学習と評価を動かす．
+
+```
+Accumulating evaluation results...
+DONE (t=0.39s).
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.758
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=1000 ] = 0.935
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=1000 ] = 0.881
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=1000 ] = -1.000
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=1000 ] = 0.290
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=1000 ] = 0.790
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.875
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=300 ] = 0.894
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=1000 ] = 0.894
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=1000 ] = -1.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=1000 ] = 0.540
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=1000 ] = 0.918
+06/12 06:16:11 - mmengine - INFO - bbox_mAP_copypaste: 0.758 0.935 0.881 -1.000 0.290 0.790
+06/12 06:16:11 - mmengine - INFO - Epoch(val) [20][148/148]    coco/bbox_mAP: 0.7580  coco/bbox_mAP_50: 0.9350  coco/bbox_mAP_75: 0.8810  coco/bbox_mAP_s: -1.0000  coco/bbox_mAP_m: 0.2900  coco/bbox_mAP_l: 0.7900  data_time: 0.0033  time: 0.0985
+```
