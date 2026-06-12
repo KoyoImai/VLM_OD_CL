@@ -1,0 +1,79 @@
+{
+  "file_name": "IMG_0964_JPG_jpg.rf.c345c64f5ab4eb4948f1cc128fcf9fa4.jpg",
+  "width": 640,
+  "height": 640,
+  "annotations": [
+    {
+      "class_name": "Solitary",
+      "bbox": [
+        258,
+        371,
+        9.5,
+        18
+      ]
+    },
+    {
+      "class_name": "Caespitose-a",
+      "bbox": [
+        190,
+        394,
+        20.5,
+        28
+      ]
+    },
+    {
+      "class_name": "Caespitose-b",
+      "bbox": [
+        416,
+        381,
+        42.5,
+        59
+      ]
+    },
+    {
+      "class_name": "Encrusting",
+      "bbox": [
+        328,
+        433,
+        35,
+        36
+      ]
+    },
+    {
+      "class_name": "Massive-Merulinidae",
+      "bbox": [
+        390,
+        475,
+        27.5,
+        41
+      ]
+    },
+    {
+      "class_name": "Corymbose",
+      "bbox": [
+        122,
+        173,
+        20.5,
+        32
+      ]
+    },
+    {
+      "class_name": "Solitary",
+      "bbox": [
+        410,
+        3,
+        30.5,
+        36
+      ]
+    },
+    {
+      "class_name": "Caespitose-b",
+      "bbox": [
+        140,
+        186,
+        40,
+        66
+      ]
+    }
+  ]
+}
