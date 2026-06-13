@@ -97,6 +97,84 @@ Roboflow100（RF100）の100データセットを，7つのドメインに分類
 ### 補足
 
 
+## 各ドメインのデータセットで学習
+
+ドメインごとに分割・統合したデータセットで学習を実行する．
+学習は1gpu，あるいは複数gpuでの並列実行が可能．
+```
+# 1gpuでの学習
+python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_<ドメイン>.py --work-dir <確認用work-dir>
+```
+```
+# 4gpuでの学習
+bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_<ドメイン>.py 4 --work-dir <確認用work-dir>
+```
+
+### underwater　ドメイン
+```
+# 1gpuでの学習
+python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_underwater.py --work-dir underwater_work_dir
+
+# 4gpuでの学習
+bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_underwater.py 4 --work-dir underwater_work_dir
+```
+
+### aerialドメイン
+```
+# 1gpuでの学習
+python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_aerial.py --work-dir aerial_work_dir
+
+# 4gpuでの学習
+bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_aerial.py 4 --work-dir aerial_work_dir
+```
+
+### videogamesドメイン
+```
+# 1gpuでの学習
+python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_videogames.py --work-dir videogames_work_dir
+
+# 4gpuでの学習
+bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_videogames.py 4 --work-dir videogames_work_dir
+```
+
+### microscopicドメイン
+```
+# 1gpuでの学習
+python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_microscopic.py --work-dir microscopic_work_dir
+
+# 4gpuでの学習
+bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_microscopic.py 4 --work-dir microscopic_work_dir
+```
+
+### documentsドメイン
+```
+# 1gpuでの学習
+python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_documents.py --work-dir documents_work_dir
+
+# 4gpuでの学習
+bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_documents.py 4 --work-dir documents_work_dir
+```
+
+### electromagneticドメイン
+```
+# 1gpuでの学習
+python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_electromagnetic.py --work-dir electromagnetic_work_dir
+
+# 4gpuでの学習
+bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_electromagnetic.py 4 --work-dir electromagnetic_work_dir
+```
+
+### real worldドメイン
+```
+# 1gpuでの学習
+python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_real_world.py --work-dir real_world_work_dir
+
+# 4gpuでの学習
+bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_real_world.py 4 --work-dir real_world_work_dir
+```
+
+
+
 
 
 
