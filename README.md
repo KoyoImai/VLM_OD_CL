@@ -74,3 +74,29 @@ DONE (t=0.39s).
 06/12 06:16:11 - mmengine - INFO - bbox_mAP_copypaste: 0.758 0.935 0.881 -1.000 0.290 0.790
 06/12 06:16:11 - mmengine - INFO - Epoch(val) [20][148/148]    coco/bbox_mAP: 0.7580  coco/bbox_mAP_50: 0.9350  coco/bbox_mAP_75: 0.8810  coco/bbox_mAP_s: -1.0000  coco/bbox_mAP_m: 0.2900  coco/bbox_mAP_l: 0.7900  data_time: 0.0033  time: 0.0985
 ```
+
+
+## データセット（RF100 ドメイン統合版）
+
+Roboflow100（RF100）の100データセットを，7つのドメインに分類し，ドメインごとに統合したもの．
+各ドメイン内で同一クラスは1つに統合している．
+元データは640×640にリサイズ済みのCOCO形式．
+統合データは `/workspace/kouyou/datasets/rf100_domain/<ドメイン名>/<train|valid>/` に配置．
+
+| ドメイン | train 画像数 | valid 画像数 | クラス数 | train アノテ数 | valid アノテ数 | config ファイル |
+|---|---:|---:|---:|---:|---:|---|
+| underwater | 12,633 | 3,576 | 28 | 64,362 | 16,927 | `configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_underwater.py` |
+| aerial | 6,643 | 1,940 | 22 | 35,840 | 10,283 | `configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_aerial.py` |
+| videogames | 8,233 | 2,219 | 87 | 16,757 | 4,613 | `configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_videogames.py` |
+| microscopic | 9,576 | 2,529 | 28 | 74,208 | 16,422 | `configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_microscopic.py` |
+| documents | 17,866 | 4,597 | 59 | 126,166 | 26,159 | `configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_documents.py` |
+| electromagnetic | 25,398 | 7,314 | 39 | 85,089 | 31,054 | `configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_electromagnetic.py` |
+| real world | 78,747 | 21,537 | 405 | 572,953 | 126,656 | `configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_real_world.py` |
+| **合計** | **159,096** | **43,712** | **668** | **975,375** | **232,114** | — |
+
+### 補足
+
+
+
+
+
