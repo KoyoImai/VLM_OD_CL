@@ -45,72 +45,69 @@ OpenMMLab **mmdetection**（v3.x）をベースに，Vision Language Model の�
 再インストールなしで反映される。
 
 ## 中核となるアーキテクチャ（学習実行の仕組み）
+mmdetection は mmengine を介した**config駆動の構成**を採用している，
+エントリポイントにハードコードはなく，`tools/train.py` は config の辞書から `Runner` を組み立てる．
 
-mmdetection は mmengine の `Registry` を介した**config駆動の構成**を採用している。エントリポイントに
-ハードコードは無く、`tools/train.py` は config の辞書だけから `Runner` を組み立てる：
+- **config は `_base_` で継承される．**
+各.  `mm_grounding_dino/*_<domain>.py` は `_base_ = 'grounding_dino_swin-t_pretrain_obj365.py'` を設定し，差分（データセット，クラス，スケジュール）のみを上書きする．
+`_base_/` に共通の datasets/models/schedules/runtime が存在する．
 
-- **config は `_base_` で継承される。** 各 `mm_grounding_dino/*_<domain>.py` は
-  `_base_ = 'grounding_dino_swin-t_pretrain_obj365.py'` を設定し、差分（データセット、クラス、
-  スケジュール）のみを上書きする。`_base_/` に共通の datasets/models/schedules/runtime がある。
-- **config 文字列の `type='CocoDataset'` は実行時に**登録済みクラスへ解決される。新しい構成要素
-  （dataset, transform, head）を追加するには、`mmdet/` 配下で登録し、config から文字列で参照する。
-- **ドメインごとの config パターン**（`..._videogames.py` を参照）：`data_root`、`class_name`
-  タプルと `metainfo`、`model.bbox_head.num_classes`、train/val dataloader の `ann_file` と
-  `data_prefix`、evaluator の `ann_file`、スケジュール（`max_epoch`, `param_scheduler`）、
-  `load_from`（事前学習済み Grounding DINO チェックポイント）を上書きする。backbone と
-  `language_model` は `optim_wrapper.paramwise_cfg.custom_keys`（`lr_mult=0.0`）で凍結される。
+- **ドメイン毎の　config　パターン**：
+
+
 
 ### プロジェクト固有の注意点（上流ドキュメントには無い）
 
-- **テキストトークン数の上限。** MM-Grounding DINO の既定は `max_text_len=256`。クラス数の多い
-  ドメイン（`videogames` 87、`real_world` 405）はこれを超えて失敗する。本プロジェクトでの対処は
+- **テキストトークン数の上限．** MM-Grounding DINO の既定は `max_text_len=256`．クラス数の多い
+  ドメイン（`videogames` 87、`real_world` 405）はこれを超えて失敗する．本プロジェクトでの対処は
   config で値を上げること：
-  `model=dict(bbox_head=dict(num_classes=..., contrastive_cfg=dict(max_text_len=512, ...)))`。
-- **RF100 のダミーカテゴリ対策。** RF100 の `_annotations.coco.json` にはダミーカテゴリが含まれ、
-  クラス数の不一致で学習がクラッシュする。対処（READMEに記載）は `_annotations.coco_fixed.json`
-  にコピーしてダミーを削除し、config をその修正済みファイルに向けること。
+  `model=dict(bbox_head=dict(num_classes=..., contrastive_cfg=dict(max_text_len=512, ...)))`．
+
 - ドメイン統合データはリポジトリ外の
-  `/workspace/kouyou/datasets/rf100_domain/<domain>/<train|valid>/` にある。
+  `/workspace/kouyou/datasets/rf100_domain/<domain>/<train|valid>/` にある．
 
 ## コマンド
 
 リポジトリのルートで実行する。`<domain>` は
-`underwater | aerial | videogames | microscopic | documents | electromagnetic | real_world`
-（および `cat`, `smoke`）。
+`underwater | aerial | videogames | microscopic | documents | electromagnetic | real_world`．
+ただし，`real_world`は基本的に使用しない．
+
+### 学習
 
 ```bash
 # 学習（1 GPU）
-python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_<domain>.py --work-dir <domain>_work_dir
+python tools/train.py configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_<domain>.py --work-dir ./experiments/exp_NNN/<domain>_work_dir
+```
 
+```bash
 # 学習（4 GPU・分散）
-bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_<domain>.py 4 --work-dir <domain>_work_dir
-
-# チェックポイントの評価（1 GPU）
-python tools/test.py <config> <checkpoint.pth>
-
-# 評価（4 GPU）
-bash tools/dist_test.sh <config> <checkpoint.pth> 4
-
-# work-dir 内の最新チェックポイントから再開
-python tools/train.py <config> --work-dir <dir> --resume
-
-# 混合精度 / LRの自動スケーリング
-python tools/train.py <config> --amp --auto-scale-lr
+bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_<domain>.py 4 --work-dir ./experiments/exp_NNN/<domain>_work_dir
 ```
 
-config ファイルを編集せずに任意の値をコマンドラインから上書きする：
-```bash
-python tools/train.py <config> --cfg-options train_cfg.max_epochs=10 optim_wrapper.optimizer.lr=0.0002
+
+### 推論・可視化
+指定した画像に対して推論し，予測結果（バウンディングボックス）を可視化する．
+Grounding DINO はテキスト（クラス名）を `--texts` で与える必要がある．
+
+**手順 1: 対象ドメインのクラス名を、ピリオド区切りの文字列として取得する**
+
+```
+python3 -c "
+import json
+with open('/workspace/kouyou/datasets/rf100_domain/<ドメイン名>/valid/_annotations.coco.json') as f:
+    cats = json.load(f)['categories']
+print(' . '.join(c['name'] for c in sorted(cats, key=lambda x: x['id'])) + ' .')
+"
 ```
 
-推論・予測結果の可視化は `visualize_prediction.ipynb` で行う。
-
-### テストと lint
-
+**手順 2: 取得したクラス名を `--texts` に渡して推論・可視化する**
 ```bash
-pytest tests/                              # 全テスト
-pytest tests/test_models/test_detectors/  # サブディレクトリ単位
-pytest tests/path/to/test_file.py::test_name
-
-pre-commit run --all-files                 # flake8, yapf, isort など（設定は .pre-commit-config.yaml）
+python demo/image_demo.py \
+  /workspace/kouyou/datasets/rf100_domain/<ドメイン名>/valid/<画像ファイル名>.jpg \
+  configs/mm_grounding_dino/grounding_dino_swin-t_finetune_8xb4_20e_{domain}.py \
+  --weights <work_dir>/best_coco_bbox_mAP_epoch_<エポック数>.pth \
+  --texts "<手順1で取得したクラス名>" \
+  --custom-entities \
+  --out-dir ./experiments/exp_NNN/<ドメイン名>_vis \
+  --pred-score-thr 0.3
 ```
