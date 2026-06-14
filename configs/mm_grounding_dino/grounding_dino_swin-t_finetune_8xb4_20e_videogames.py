@@ -16,7 +16,8 @@ class_name = ('avatar', 'object', 'assassin', 'atv', 'car', 'gun', 'gun menu',
               'rune-blue', 'rune-gray', 'rune-grey', 'rune-red', 'watcher')
 num_classes = len(class_name)
 metainfo = dict(classes=class_name)
-model = dict(bbox_head=dict(num_classes=num_classes))
+# model = dict(bbox_head=dict(num_classes=num_classes))
+model = dict(bbox_head=dict(num_classes=num_classes, contrastive_cfg=dict(max_text_len=512, log_scale="auto", bias=True)))
 train_pipeline = [
     dict(type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
