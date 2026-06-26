@@ -1,0 +1,549 @@
+%==================================================================
+\section{VLM/OVD 継続学習とゼロショット保持}
+\label{sec:vlm-ovd-adaptation}
+本章では，事前学習済み VLM 検出器（MM-Grounding DINO~\cite{mmgdino}）を
+ドメイン増加で継続学習し，(A) 新ドメイン適応，(B) 過去ドメイン忘却抑制，
+(C) 事前学習ゼロショット（COCO 検出，以下 ZCOCO）保持を同時に達成するという
+本研究の設定に対して，最も近接した既存手法群を深掘りする．
+前半（\S\ref{sub:zira}〜\S\ref{sub:dynamicdino}）は事前学習検出器を直接対象とする
+直接競合（ZiRa，DitHub，Textual Inversion，Dynamic-DINO）であり，
+後半（\S\ref{sub:zscl}〜\S\ref{sub:moeadapters}）は CLIP 分類で確立された
+基盤モデル適応・ゼロショット保持の機序（ZSCL，WiSE-FT，Model Soups，
+Task Arithmetic，MoE-Adapters）であって，本研究にとっては
+直交化以外の忘却抑制・ZCOCO 保持を担うベースラインないし補完成分である．
+本研究の提案手法は，本体を凍結し更新部分空間を過去ドメインおよび COCO（task-0）と
+直交化する InfLoRA 型~\cite{inflora} であり，各手法に対する差別化を各節末で述べ，
+最後に比較表（表~\ref{tab:vlm-ovd-compare}）にまとめる．
+なお後半 B 群はいずれも CLIP 分類で検証されており，物体検出への外挿は未実証である点を
+各節で明記する．
+
+%==================================================================
+\subsection{ZiRa：Zero-interference Reparameterizable Adaptation}
+\label{sub:zira}
+
+\subsubsection*{(1) 問題設定・動機}
+ZiRa~\cite{zira} は，事前学習済み Vision-Language Object Detection Model（VLODM）を
+複数の専門ドメインへ逐次適応させつつ，事前学習由来のゼロショット汎化を保持する
+継続学習タスク Incremental Vision-Language Object Detection（IVLOD）を提案した．
+これは本研究の設定（A・B・C の同時達成）と最も近接した先行研究であり，
+評価枠組み（ZCOCO・Avg・hAP の三指標，ODinW-13 を1タスクずつ逐次学習）も
+本研究が直接参照する土台となる．動機は，VLODM を素朴に逐次 fine-tune すると
+事前学習表現が上書きされ，ゼロショット検出能力（ZCOCO）が破滅的に劣化する点にある．
+
+\subsubsection*{(2) 中核アイデア}
+ZiRa は，事前学習 VLODM（Grounding DINO の backbone・言語側・検出器）を全凍結し，
+各適応箇所に追加する Reparameterizable Dual Branch（RDB）のみを学習する．
+RDB は高学習率分岐（HLRB）と低学習率分岐（LLRB）の2並列ブランチからなり，
+HLRB が新タスクへ素早く適応し，LLRB が既知知識を緩やかに蓄積する．
+さらに RDB 出力のノルムを抑制する Zero-interference Loss（ZiL）を課し，
+事前学習表現への干渉を最小化することでゼロショット性能を守る．
+
+\subsubsection*{(3) 定式化}
+線形層に対する RDB の出力は，HLRB と LLRB の和に学習可能なスケール $s$ を介して
+合成される．入力を $x$ とすると
+\begin{equation}
+x_{\mathrm{rdb}} = s\,\bigl(W_{\mathrm{hlrb}}\,x + b_{\mathrm{hlrb}}\bigr)
+  + \bigl(W_{\mathrm{llrb}}\,x + b_{\mathrm{llrb}}\bigr),
+\label{eq:rdb}
+\end{equation}
+と書ける（畳み込み層では行列積をたたみ込み $\ast$ に置換する）．
+LLRB の学習率は HLRB の $\eta$ 倍（$0<\eta<1$）に設定され，
+HLRB が可塑性，LLRB が安定性を担う．Zero-interference Loss は，
+RDB 全体の出力と HLRB 出力の $L_1$ ノルムをそれぞれ抑制する二項からなる．
+\begin{align}
+L_{\mathrm{rdb}}  &= \bigl\| x_{\mathrm{rdb}} \bigr\|_1, \label{eq:zil-rdb}\\
+L_{\mathrm{hlrb}} &= \bigl\| s\,\mathrm{HLRB}(x) \bigr\|_1, \label{eq:zil-hlrb}\\
+L_{\mathrm{zil}}  &= L_{\mathrm{rdb}} + L_{\mathrm{hlrb}}. \label{eq:zil}
+\end{align}
+全体の学習目的は，検出損失 $L_{\mathrm{det}}$ に ZiL を重み $\lambda$ で加えた
+\begin{equation}
+L = L_{\mathrm{det}} + \lambda\,L_{\mathrm{zil}}
+\label{eq:zira-total}
+\end{equation}
+である．式~(\ref{eq:zil-rdb})は RDB 全体の出力増分を，
+式~(\ref{eq:zil-hlrb})は速く動く HLRB 寄与を別個に抑え，
+適応に必要な最小限の増分だけを許容することで干渉（interference）を 0 に近づける．
+
+\subsubsection*{(4) アルゴリズム手順}
+各下流タスク $t$ について，(i) HLRB を初期化し LLRB は前タスクの状態を引き継ぐ，
+(ii) 式~(\ref{eq:zira-total}) を最小化して RDB を学習する，
+(iii) タスク学習後に HLRB を LLRB へ統合（再パラメータ化）する．統合は
+\begin{equation}
+W_{\mathrm{llrb}} \leftarrow s\,W_{\mathrm{hlrb}} + W_{\mathrm{llrb}},\qquad
+b_{\mathrm{llrb}} \leftarrow s\,b_{\mathrm{hlrb}} + b_{\mathrm{llrb}},
+\label{eq:rdb-merge}
+\end{equation}
+で与えられ，HLRB をゼロリセットする．この統合により追加パラメータは
+タスク数によらず一定（RDB 1 組分）に保たれ，メモリと推論コストが増えない．
+
+\subsubsection*{(5) 主要な実験設定と数値}
+評価は ODinW-13 を1タスクずつ逐次学習し（順序はランダムシャッフル，3 seed 平均），
+各タスク学習後に ZCOCO（COCO ゼロショット mAP），Avg（ODinW-13 平均 mAP），
+両者の調和平均 hAP を測る．Grounding DINO の Full-shot 設定で，
+原モデルが ZCOCO $=47.37$／Avg $=46.70$／hAP $=47.03$ であるのに対し，
+ZiRa は ZCOCO $=46.06$／Avg $=59.73$／hAP $=52.01$ を達成し，
+CL-DETR（ZCOCO $32.15$）比でゼロショット $+13.91$ AP，
+iDETR（ZCOCO $37.32$）比で $+8.74$ AP の改善を示した．
+主要ハイパラは $\lambda \approx 0.05$〜$0.10$，$\eta \approx 0.2$，初期スケール $s \approx 0.1$，
+各タスク 2 epoch である（数値の細部は実装依存で要確認）．
+
+\subsubsection*{(6) 長所・短所}
+長所は，全凍結・小分岐・出力ノルム正則化・統合（再パラメータ化）の組み合わせにより，
+パラメータ一定かつ推論コスト増なしでゼロショット保持と適応を両立する点である．
+短所は，干渉抑制が出力ノルムの $L_1$ 抑制という間接的な軟制約に留まり，
+どの部分空間で干渉が起きているかを陽に扱わない点である．
+過去ドメイン間（B）の忘却よりゼロショット（C）保持に主眼があり，
+逐次的に増える過去ドメインへの干渉構造そのものは明示的に制御されない．
+
+\subsubsection*{(7) 本研究への含意・差別化}
+本研究は，ZiRa と同じく本体凍結・統合（パラメータ一定）・ZCOCO 保持を目標とするが，
+干渉抑制の機序が異なる．ZiRa が式~(\ref{eq:zil})の出力ノルム抑制という軟制約で
+干渉を緩めるのに対し，本研究は更新部分空間を過去ドメイン勾配および COCO 部分空間と
+陽に直交化する（InfLoRA 型）．本研究の予備実験では忘却が共有検出経路の
+COCO 部分空間成分として生じることが示されており，その方向を直接避ける本手法は，
+出力ノルム一律抑制よりも適応と保持のトレードオフを精密に置ける可能性がある．
+すなわち本研究は，ZiRa を「部分空間レベルの直交化＋COCO の task-0 化」へ
+発展させた位置づけにある．
+
+%==================================================================
+\subsection{DitHub：モジュール・ライブラリによる増分 OVD}
+\label{sub:dithub}
+
+\subsubsection*{(1) 問題設定・動機}
+DitHub~\cite{dithub} は増分オープン語彙物体検出（incremental OVD）を，
+単一の一枚岩な適応重みではなくエキスパート・モジュールのライブラリで扱う枠組みである．
+希少クラスへの適応と複数専門ドメインでの能力強化を，テキストプロンプトの汎化を
+活かしながら両立することを狙う．動機は，逐次適応で全パラメータを共有更新すると
+過去知識が上書きされるため，知識をモジュール単位で分離・蓄積し，
+必要時に呼び出す方が忘却に頑健だという点にある．
+
+\subsubsection*{(2) 中核アイデア}
+DitHub は，Version Control System（VCS）の branch・fetch・merge に着想を得て，
+クラス単位の LoRA エキスパート・モジュールをライブラリとして管理する．
+基盤検出器は Grounding DINO であり，その encoder のみを LoRA で適応する
+（言語側は変更しない）．branch は各タスク内でクラスごとに独立に LoRA の $A$ 行列を
+最適化して専門モジュールを作る操作，fetch は後続タスクで再出現したクラスの
+既存モジュールをライブラリから取り出す操作，merge はそれらを統合する操作である．
+
+\subsubsection*{(3) 定式化}
+LoRA をクラス固有の $A$ 行列と層共有の $B$ 行列に分解する．
+あるクラス $c$ が再出現したとき，過去モジュール $A_c^{\mathrm{old}}$ と
+現タスクのウォームアップ初期化 $A_{\mathrm{wu}}$ を重み付き平均で統合する．
+\begin{equation}
+A_c^{\mathrm{cur}} = (1-\lambda_A)\,A_c^{\mathrm{old}} + \lambda_A\,A_{\mathrm{wu}},
+\label{eq:dithub-a}
+\end{equation}
+共有 $B$ 行列はタスクをまたいで
+\begin{equation}
+B_t = (1-\lambda_B)\,B_{t-1} + \lambda_B\,B^{\mathrm{opt}},
+\label{eq:dithub-b}
+\end{equation}
+で更新する．推論時に複数クラスを含むテキストプロンプトを与える場合は，
+該当する各クラス固有モジュールをライブラリから fetch し，重みの平均で統合して用いる．
+$\lambda_A$ は過去のクラス固有知識を優先するため小さく（ODinW-13 で $0.3$，ODinW-O で $0.1$），
+$\lambda_B$ は最近のタスク知識を優先するため大きく（$0.7$）設定される（数値は要確認）．
+
+\subsubsection*{(4) アルゴリズム手順}
+(i) タスク $t$ で出現する各クラスについて $A$ 行列を独立に学習（branch），
+(ii) 既出クラスは式~(\ref{eq:dithub-a})で過去モジュールと統合，共有 $B$ は式~(\ref{eq:dithub-b})で更新，
+(iii) 学習済みモジュールをライブラリに登録，
+(iv) 推論時はプロンプトのクラス集合に対応するモジュールを fetch し平均統合して検出する．
+
+\subsubsection*{(5) 主要な実験設定と数値}
+ODinW-13 および増分用に再編した ODinW-O で評価する．Full（全タスク平均 mAP）と
+ZCOCO で，DitHub は ODinW-13 で Full $=62.19$／ZCOCO $=47.01$，
+ZiRa（Full $=57.98$／ZCOCO $=46.26$）に対し Full $+4.21$／ZCOCO $+0.75$，
+ODinW-O では DitHub が Full $=62.38$／ZCOCO $=46.51$，
+ZiRa（Full $=57.63$／ZCOCO $=44.43$）に対し Full $+4.75$／ZCOCO $+2.08$ を報告した
+（数値は要確認）．適応性能（Full）で ZiRa を明確に上回る点が特徴である．
+
+\subsubsection*{(6) 長所・短所}
+長所は，クラス単位のモジュール分離により知識の上書きを回避し，適応性能で高い水準を
+達成する点である．短所は，クラス／ドメインの増加に伴いライブラリのモジュール数が増え，
+パラメータと管理コストが増大する点，および推論時にプロンプトのクラス集合に応じた
+fetch・平均統合という追加機構を要する点である．
+
+\subsubsection*{(7) 本研究への含意・差別化}
+DitHub は本研究にとって ZiRa と並ぶ最直接の競合であり，新規性主張で必ず差別化すべき対象である．
+DitHub がモジュール増加（拡張増）と推論時 fetch を要するのに対し，
+本研究は各タスク後に低ランク更新をベース重みへ統合してパラメータ一定を保ち，
+推論機構を増やさない．さらに本研究は，DitHub が陽に扱わない事前学習ゼロショット
+（COCO）を task-0 として直交保護対象に含める点で異なる．モジュール局在化の発想自体は，
+本研究の機序分析（どの層・どの部分空間を適応すべきか）と相補的に参照できる．
+
+%==================================================================
+\subsection{Textual Inversion for OVD：トークン埋め込みのみの適応}
+\label{sub:textinv}
+
+\subsubsection*{(1) 問題設定・動機}
+Textual Inversion for OVD~\cite{textinv} は，オープン語彙検出器を本体凍結のまま
+少数例で新規・改良概念へ適応させ，忘却を原理的に回避する手法である．
+動機は，検出器の重みを一切更新しなければゼロショット能力も既存ベンチ性能も
+定義上保たれる，という点にある．
+
+\subsubsection*{(2) 中核アイデア}
+拡散モデルの Textual Inversion をオープン語彙検出に応用する．
+VLM 全体を凍結し，新規概念に対応するトークン埋め込み（テキスト側）のみを
+少数例（おおむね 3 インスタンス以上）から最適化する．
+適応の自由度をトークン埋め込み次元のみに圧縮することで，
+本体重み（視覚・検出経路）を一切変えずに語彙を拡張する．
+
+\subsubsection*{(3) 定式化}
+凍結された検出器のテキストエンコーダ $f_{\mathrm{text}}$ と画像経路を固定し，
+新規概念のトークン埋め込み $v^{\ast}$ のみを学習対象とする．
+少数例 $\{(I_k, y_k)\}$ に対する検出損失を $L_{\mathrm{det}}$ として
+\begin{equation}
+v^{\ast} = \arg\min_{v}\; \sum_{k} L_{\mathrm{det}}\!\bigl(I_k,\, y_k;\, f_{\mathrm{text}}(v),\, \theta_{\mathrm{frozen}}\bigr),
+\label{eq:textinv}
+\end{equation}
+を最小化する．$\theta_{\mathrm{frozen}}$ は更新されないため，
+既存クラスおよびゼロショット出力は不変である．
+
+\subsubsection*{(4) アルゴリズム手順}
+(i) 新規概念の少数例を用意，
+(ii) 本体を凍結したまま式~(\ref{eq:textinv})でトークン埋め込み $v^{\ast}$ のみを最適化，
+(iii) 学習した埋め込みを語彙に追加して推論プロンプトに含める．
+本体は変わらないため過去概念・ゼロショットへの干渉は生じない．
+
+\subsubsection*{(5) 主要な実験設定と数値}
+少数例適応（few-shot）での新規・希少概念検出の改善を主目的とする．
+定量的な改善幅は論文の few-shot 設定に依存するため，具体数値は要確認とする．
+
+\subsubsection*{(6) 長所・短所}
+長所は，本体凍結ゆえに忘却・ゼロショット劣化が原理的に生じず，適応コストが
+トークン埋め込み次元に限られる点である．短所は，表現できる適応が
+語彙（テキスト側）の調整に限られ，視覚特徴や検出経路自体の専門ドメインへの
+適応力には上限がある点，および逐次に増える過去ドメインの保持・評価が
+本手法単体では扱われない点である．
+
+\subsubsection*{(7) 本研究への含意・差別化}
+本研究の「凍結＋低ランク重み差分（LoRA）」に対し，本手法は
+「凍結＋テキスト埋め込みのみ」という別パラダイムであり，必須の比較ベースラインとなる．
+本研究は重み側の低ランク適応で視覚・検出経路まで踏み込んで適応するため，
+テキスト埋め込みのみでは届かない専門ドメインの視覚的差異を捉えうる一方，
+重みを更新する以上は直交化と COCO 保護による忘却制御が必要になる，という対照をなす．
+
+%==================================================================
+\subsection{Dynamic-DINO：Grounding DINO の MoE 化}
+\label{sub:dynamicdino}
+
+\subsubsection*{(1) 問題設定・動機}
+Dynamic-DINO~\cite{dynamicdino} は，実時間オープン語彙検出器 Grounding DINO 1.5 Edge を
+Mixture-of-Experts（MoE）で拡張し，推論効率を保ちながら表現容量を高める手法である．
+本研究にとっては，同系バックボーン上で MoE を実装した具体的前例として参照価値がある．
+
+\subsubsection*{(2) 中核アイデア}
+FFN を複数の小さなエキスパートに分解し，事前学習重みの割当戦略とルータ初期化により
+構成する．推論時はルータが入力に応じてタスク関連エキスパートのみを活性化し，
+サブネットワークを動的に形成する．浅層は多様な協調，深層は固定的な協調パターンを示す
+ことが報告されている．
+
+\subsubsection*{(3) 定式化}
+入力トークン表現 $x$ に対し，$N$ 個のエキスパート $\{E_i\}_{i=1}^{N}$ と
+ルータ $g(\cdot)$ を用いて出力を
+\begin{equation}
+y = \sum_{i=1}^{N} g_i(x)\,E_i(x),\qquad
+g(x) = \mathrm{TopK}\bigl(\mathrm{softmax}(W_g\,x)\bigr),
+\label{eq:moe}
+\end{equation}
+と書く．$\mathrm{TopK}$ により少数のエキスパートのみが活性化され，
+実効計算量を抑える．エキスパートは事前学習 FFN を分解して初期化される．
+
+\subsubsection*{(4) アルゴリズム手順}
+(i) 事前学習 FFN を $N$ エキスパートへ分解し重みを割り当てる，
+(ii) ルータ $W_g$ を初期化し学習する，
+(iii) 推論時は式~(\ref{eq:moe})の TopK ルーティングで関連エキスパートのみを実行する．
+
+\subsubsection*{(5) 主要な実験設定と数値}
+主目的が実時間効率と検出精度の両立であり，逐次継続学習・忘却・ZCOCO 保持は
+本手法の評価対象ではない．具体数値は要確認とする．
+
+\subsubsection*{(6) 長所・短所}
+長所は，Grounding DINO 系で MoE を実装して容量を拡張しつつ推論を実時間に保つ点である．
+短所は，逐次 CL・忘却・ZCOCO 保持が未評価であり，FFN 分解の重み割当を前提とする点である．
+
+\subsubsection*{(7) 本研究への含意・差別化}
+ドメイン別エキスパート＋ルーティング（新ドメインは新エキスパート追加，
+過去・COCO は既存経路保持）という発想は，忘却抑制・ZCOCO 保持に転用しうる
+（推論時ルーティングは \S\ref{sub:moeadapters} の MoE-Adapters と同系）．
+ただし本研究はパラメータ一定（統合）を方針とするため，MoE のような拡張増型とは
+設計が分かれる．Dynamic-DINO は，モジュール式・MoE 案を MM-Grounding DINO 上で
+実現する際の技術的参照として位置づけられる．
+
+%==================================================================
+\subsection{ZSCL：凍結初期モデルへの特徴蒸留}
+\label{sub:zscl}
+
+\subsubsection*{(1) 問題設定・動機}
+ZSCL~\cite{zscl} は，CLIP~\cite{clip} を逐次 fine-tune するとゼロショット転移能力が
+破滅的に劣化する現象（ZCOCO 低下の CLIP 分類版）を実証し，その抑制を狙う．
+本研究の ZCOCO 保持にとって最重要の先行であり，直交化以外の機序を与える．
+
+\subsubsection*{(2) 中核アイデア}
+ZSCL は2つの正則化を併用する．第一に，現在モデルと凍結した初期（事前学習）モデルとの間で
+特徴空間の蒸留を行う．蒸留に用いる参照集合（reference dataset）は意味的多様性さえあればよく，
+ラベル不要・事前学習に含まれる必要なし・画像テキスト対応も不要である．
+第二に，パラメータ空間での重み平均を併用して安定性を高める．
+
+\subsubsection*{(3) 定式化}
+凍結初期モデルの特徴抽出を $f_{0}$，現在モデルを $f_{\theta}$，参照集合を $\mathcal{D}_{\mathrm{ref}}$ として，
+特徴蒸留損失を
+\begin{equation}
+L_{\mathrm{distill}} = \mathbb{E}_{x \in \mathcal{D}_{\mathrm{ref}}}
+  \bigl\| f_{\theta}(x) - f_{0}(x) \bigr\|^{2},
+\label{eq:zscl-distill}
+\end{equation}
+で与える（実装では画像側・テキスト側双方の出力分布を KL で揃える形を取る）．
+全体の学習目的は，現タスクの損失 $L_{\mathrm{task}}$ に蒸留を加えた
+\begin{equation}
+L = L_{\mathrm{task}} + \lambda\,L_{\mathrm{distill}},
+\label{eq:zscl-total}
+\end{equation}
+であり，式~(\ref{eq:zscl-distill})が現在モデルの特徴を初期モデルへ引き戻すことで
+ゼロショット表現の劣化を防ぐ．
+
+\subsubsection*{(4) アルゴリズム手順}
+(i) 事前学習モデルを $f_0$ として複製・凍結，
+(ii) 意味的多様な未ラベル参照集合 $\mathcal{D}_{\mathrm{ref}}$ を用意，
+(iii) 各タスク学習で式~(\ref{eq:zscl-total})を最小化し，蒸留で初期特徴を保持，
+(iv) 重み平均をパラメータ空間正則化として併用する．
+
+\subsubsection*{(5) 主要な実験設定と数値}
+CLIP の継続学習（多データセット系列の分類）でゼロショット転移の劣化抑制を示す．
+本研究に直結する検出での数値ではないため，定量値はここでは定性記述に留める（要確認）．
+
+\subsubsection*{(6) 長所・短所}
+長所は，参照集合が未ラベルでよく，事前学習データを要さずにゼロショットを守れる点である．
+短所は，CLIP 分類での検証であり grounded detection への外挿は未実証である点，
+および凍結初期モデルの複製と参照集合での順伝播という追加計算を要する点である．
+
+\subsubsection*{(7) 本研究への含意・差別化}
+ZCOCO 保持が直交化以外の機序（特徴蒸留）でも達成可能であることを示す重要例である．
+本研究の提案手法（InfLoRA 型）に対しては，凍結 MM-Grounding DINO 特徴への蒸留を
+未ラベルの意味的多様な参照画像で行う補完成分として加えられ，
+同時に強力なベースライン／アブレーション項にもなる．
+ただし検出（region レベル）への外挿は本研究で検証すべき未実証事項である．
+
+%==================================================================
+\subsection{WiSE-FT：ゼロショット重みと FT 重みの線形補間}
+\label{sub:wiseft}
+
+\subsubsection*{(1) 問題設定・動機}
+WiSE-FT~\cite{wiseft} は，標準的な fine-tune が分布シフトへの頑健性
+（＝ゼロショット性能）を損なう問題に対し，推論コストを増やさずに頑健性を回復する
+重みアンサンブル手法である．
+
+\subsubsection*{(2) 中核アイデア}
+ゼロショット重み（事前学習重み）$\theta_{\mathrm{zs}}$ と fine-tune 後重み
+$\theta_{\mathrm{ft}}$ を，単一の補間係数 $\alpha$ で線形補間して単一モデルを得る．
+モデルが増えないため追加の推論コストは 0 である．
+
+\subsubsection*{(3) 定式化}
+\begin{equation}
+\theta = (1-\alpha)\,\theta_{\mathrm{zs}} + \alpha\,\theta_{\mathrm{ft}},
+\qquad \alpha \in [0,1].
+\label{eq:wiseft}
+\end{equation}
+$\alpha$ を小さくすればゼロショット側（保持）に，大きくすれば目標分布側（適応）に
+寄り，式~(\ref{eq:wiseft})が適応と保持のトレードオフを 1 パラメータで制御する．
+
+\subsubsection*{(4) アルゴリズム手順}
+(i) 事前学習重み $\theta_{\mathrm{zs}}$ を保存，
+(ii) 標準的に fine-tune して $\theta_{\mathrm{ft}}$ を得る，
+(iii) 検証性能に応じて $\alpha$ を選び式~(\ref{eq:wiseft})で補間，
+(iv) 補間した単一重みで推論する．
+
+\subsubsection*{(5) 主要な実験設定と数値}
+ImageNet とその分布シフト版（分類）で，目標分布性能を保ちつつ
+頑健性／ゼロショットを回復することを示す．検出での数値ではないため要確認とする．
+
+\subsubsection*{(6) 長所・短所}
+長所は，単一重み・推論コスト 0 で適応と保持を $\alpha$ で滑らかに制御できる点である．
+短所は，CLIP 分類での検証であり，干渉する成分があると一律補間が劣化しうる点，
+検出器の box／text ヘッドの補間は非自明で要適応である点である．
+
+\subsubsection*{(7) 本研究への含意・差別化}
+凍結事前学習重みとドメイン適応重みの WiSE-FT 流補間は，安価で強力な ZCOCO 保持
+ベースラインであり，本研究手法の候補成分（$\alpha$ でトレードオフ制御）にもなる．
+DitHub のモジュール増加に対する単純さの優位（単一重み）を主張する材料でもある．
+ただし CLIP 分類で検証された手法であり，検出への外挿は未実証である．
+
+%==================================================================
+\subsection{Model Soups：同一初期 FT の重み平均}
+\label{sub:modelsoups}
+
+\subsubsection*{(1) 問題設定・動機}
+Model Soups~\cite{modelsoups} は，同一初期値から fine-tune した複数モデルの重みを
+平均することで，精度・OOD 頑健性・新規下流タスクのゼロショット性能を，
+推論コストを増やさずに改善できることを示した．
+
+\subsubsection*{(2) 中核アイデア}
+同一の事前学習初期値を共有する複数 fine-tune 重みを平均し単一重みへ統合する．
+一律平均が劣化する場合は，性能が上がる成分のみを順次追加する greedy soup を用いる．
+
+\subsubsection*{(3) 定式化}
+$K$ 個の fine-tune 重み $\{\theta_k\}_{k=1}^{K}$ に対し，
+\begin{equation}
+\theta_{\mathrm{soup}} = \frac{1}{K}\sum_{k=1}^{K}\theta_k,
+\label{eq:soup-uniform}
+\end{equation}
+を取る（uniform soup）．greedy soup では，検証性能 $\mathrm{Acc}(\cdot)$ が向上する
+場合のみ成分を採用し，採用済み集合 $\mathcal{S}$ を
+\begin{equation}
+\mathcal{S} \leftarrow \mathcal{S} \cup \{\theta_k\}
+\quad\text{if}\quad
+\mathrm{Acc}\!\bigl(\mathrm{avg}(\mathcal{S}\cup\{\theta_k\})\bigr)
+\geq \mathrm{Acc}\!\bigl(\mathrm{avg}(\mathcal{S})\bigr),
+\label{eq:greedy-soup}
+\end{equation}
+と更新する．
+
+\subsubsection*{(4) アルゴリズム手順}
+(i) 同一初期値から複数 fine-tune 重みを得る，
+(ii) uniform soup（式~(\ref{eq:soup-uniform}))または greedy soup（式~(\ref{eq:greedy-soup}))で統合，
+(iii) 単一重みで推論する．
+
+\subsubsection*{(5) 主要な実験設定と数値}
+画像分類（CLIP/ViT の多構成 fine-tune）で，平均統合により単一最良モデルを上回る精度と
+頑健性を示す．検出での数値ではないため要確認とする．
+
+\subsubsection*{(6) 長所・短所}
+長所は，パラメータ一定（単一重み）で複数構成の知識を蓄積でき，推論コスト増がない点である．
+短所は，タスク数増で重み干渉により劣化するため greedy／選択的統合が必要になる点，
+平均の成否が損失地形の幾何（mode connectivity）に依存する点である．
+
+\subsubsection*{(7) 本研究への含意・差別化}
+ドメイン別に適応した（同一の凍結事前学習を初期値とする）モデル／LoRA を平均統合する
+マージ系ベースラインを与え，DitHub のモジュール増加に対する一定パラメータの対案となる．
+平均可能性が損失地形に依存するという知見は，本研究の機序分析
+（ドメイン間の補間バリア・干渉）の動機にもなる．CLIP 分類での検証であり検出は未実証である．
+
+%==================================================================
+\subsection{Task Arithmetic：task vector による編集}
+\label{sub:taskarith}
+
+\subsubsection*{(1) 問題設定・動機}
+Task Arithmetic~\cite{taskarith} は，fine-tune による重みの変化を方向ベクトルとして扱い，
+再学習なしにモデルを編集（タスク追加・除去）できることを示した．
+
+\subsubsection*{(2) 中核アイデア}
+task vector を「fine-tune 後重み $-$ 事前学習重み」と定義し，重み空間の加減算で
+タスクをマージ（加算）またはアンラーニング（減算・否定）する．
+
+\subsubsection*{(3) 定式化}
+事前学習重み $\theta_0$，タスク $i$ の fine-tune 重み $\theta_i$ に対し，
+task vector を
+\begin{equation}
+\tau_i = \theta_i - \theta_0,
+\label{eq:taskvec}
+\end{equation}
+と定義する．複数タスクのマージはスケール $\lambda$ を用いて
+\begin{equation}
+\theta_{\mathrm{merge}} = \theta_0 + \lambda \sum_{i} \tau_i,
+\label{eq:taskvec-merge}
+\end{equation}
+で与え，タスク $j$ の選択的アンラーニングは $\theta_0 - \lambda\,\tau_j$ で行う．
+減算は対象タスク性能のみを下げ，他タスクはほぼ不変に保たれる．
+
+\subsubsection*{(4) アルゴリズム手順}
+(i) 各タスクを個別に fine-tune し式~(\ref{eq:taskvec})で task vector を得る，
+(ii) 加算なら式~(\ref{eq:taskvec-merge})でマージ，否定なら対象 task vector を減算，
+(iii) 編集後の単一重みで推論する．
+
+\subsubsection*{(5) 主要な実験設定と数値}
+画像分類・NLP の複数タスクで，加算による多タスク化と否定による選択的忘却を示す．
+検出での数値ではないため要確認とする．
+
+\subsubsection*{(6) 長所・短所}
+長所は，joint 再学習なしに多ドメイン化や選択的アンラーニングを単一重みで行える点である．
+短所は，タスク数増で重み干渉・符号衝突により精度が低下する点であり，
+TIES-Merging~\cite{ties} や DARE 等の選択的統合が改良として提案されている．
+
+\subsubsection*{(7) 本研究への含意・差別化}
+task vector の加算は，COCO を保ちつつドメインを蓄積するマージ系ベースラインを与える．
+さらに減算（否定）は，特定ドメインを「引いて」何が壊れるかを観察する
+制御された忘却実験（本研究の機序分析ツール）として使える．
+本研究は，重みを無方向に加算するのではなく，更新部分空間を過去・COCO と
+直交化することで符号衝突・干渉を設計段階で抑える点が異なる．CLIP/NLP での検証である．
+
+%==================================================================
+\subsection{MoE-Adapters：推論時ルーティングによる保持}
+\label{sub:moeadapters}
+
+\subsubsection*{(1) 問題設定・動機}
+MoE-Adapters~\cite{moeadapters} は，凍結 CLIP の継続学習において，
+in-distribution 入力は学習済みアダプタへ，out-of-distribution（OOD）入力は
+凍結 CLIP へとルーティングし，適応とゼロショット保持を推論時に切り替える手法である．
+
+\subsubsection*{(2) 中核アイデア}
+凍結 CLIP に MoE アダプタを追加し，Distribution Discriminative Auto-Selector（DDAS）で
+入力分布を判別する．in-distribution はアダプタ（適応），OOD は凍結 CLIP（ゼロショット保持）へ
+振り分ける．OOD 判定はタスク別オートエンコーダの再構成誤差で行う．
+
+\subsubsection*{(3) 定式化}
+入力 $x$ に対しタスク別オートエンコーダ $\{\mathrm{AE}_t\}$ の最小再構成誤差で
+in/out を判定し，ルーティング指標を
+\begin{equation}
+r(x) = \min_{t}\, \bigl\| x - \mathrm{AE}_t(x) \bigr\|^{2},
+\label{eq:ddas}
+\end{equation}
+で与える．$r(x)$ が閾値未満なら対応アダプタ群へ，閾値以上（OOD）なら凍結経路へ
+ルーティングする．アダプタ側は MoE のルータ $g(\cdot)$ により式~(\ref{eq:moe})と同様に
+複数エキスパートを選択する．
+
+\subsubsection*{(4) アルゴリズム手順}
+(i) 各タスクで MoE アダプタとタスク別オートエンコーダを学習，
+(ii) 推論時は式~(\ref{eq:ddas})で in/out を判定，
+(iii) in-distribution はアダプタ，OOD は凍結 CLIP へ振り分けて推論する．
+
+\subsubsection*{(5) 主要な実験設定と数値}
+CLIP のクラス／ドメイン増分分類で，ゼロショット保持と適応の両立を示す．
+検出での数値ではないため要確認とする．
+
+\subsubsection*{(6) 長所・短所}
+長所は，学習時の干渉制御とは独立に，推論時ルーティングで OOD を凍結経路へ逃がして
+ゼロショットを守れる点である．短所は，CLIP 分類での検証であり，検出は
+領域（region）ごとの OOD ルーティングが必要で未実証である点，
+タスク別オートエンコーダという追加機構を要する点である．
+
+\subsubsection*{(7) 本研究への含意・差別化}
+学習時の部分空間直交化（InfLoRA 型）とは別軸で，推論時ルーティングにより
+ZCOCO を保持する道を示す（OOD＝未学習／COCO 的入力は凍結経路へ）．
+本研究はパラメータ一定・推論機構を増やさない方針のため，ルーティング系とは設計が分かれるが，
+ベースラインとして比較対象になる．検出では region 単位ルーティングが必要で
+literal 適用は非自明であり，これ自体が本研究の貢献余地ないし実装難所である．
+
+%==================================================================
+\subsection{比較と本研究の位置づけ}
+\label{sub:vlm-ovd-summary}
+表~\ref{tab:vlm-ovd-compare}に本章の各手法を，忘却抑制機序・パラメータ拡張・
+ゼロショット保持・検出での実証有無・本研究との関係の5観点で整理する．
+直接競合（ZiRa・DitHub）は検出で実証済みだが，ZiRa は出力ノルム正則化という軟制約に留まり，
+DitHub はモジュール増加と推論時 fetch を要する．基盤モデル適応群（ZSCL〜MoE-Adapters）は
+ゼロショット保持の機序として有力だが，いずれも CLIP 分類で検証され，
+検出（region レベル）への外挿は未実証である．本研究は，本体凍結・パラメータ一定を保ちつつ，
+更新部分空間を過去ドメインおよび COCO（task-0）と直交化することで（InfLoRA 型），
+検出におけるゼロショット保持を明示目標とする点で，これら全てと差別化される．
+
+\begin{table}[tb]
+\caption{本章の手法と本研究の比較（忘却抑制機序・拡張・ゼロショット保持・検出実証・本研究との関係）}
+\label{tab:vlm-ovd-compare}
+\scriptsize
+\begin{tabularx}{\linewidth}{l l l c c X}
+\hline
+手法 & 忘却抑制機序 & パラメータ拡張 & ZS保持 & 検出実証 & 本研究との関係 \\
+\hline
+ZiRa~\cite{zira} & 出力ノルム正則化（ZiL）＋分岐統合 & 一定 & 明示 & 是 & 最直接競合．部分空間直交化＋COCO保護へ発展 \\
+DitHub~\cite{dithub} & クラス別モジュール分離・fetch/merge & 増加 & 明示 & 是 & 最直接競合．一定パラメータ・推論単純さで差別化 \\
+Textual Inv.~\cite{textinv} & 本体凍結・埋め込みのみ適応 & 微小（埋め込み） & 原理的不変 & 是 & 別パラダイムの必須ベースライン \\
+Dynamic-DINO~\cite{dynamicdino} & MoE容量拡張（CL非対象） & 増加（エキスパート） & 未評価 & 是 & 同系MoE実装の技術参照 \\
+ZSCL~\cite{zscl} & 凍結初期への特徴蒸留 & 一定 & 明示 & 否（分類） & 補完成分／ベースライン（検出は要検証） \\
+WiSE-FT~\cite{wiseft} & ゼロショット重みとの線形補間 & 一定 & 明示 & 否（分類） & 安価な保持ベースライン／候補成分 \\
+Model Soups~\cite{modelsoups} & 同一初期FTの重み平均 & 一定 & 暗黙 & 否（分類） & マージ系ベースライン \\
+Task Arith.~\cite{taskarith} & task vector加算/否定 & 一定 & 暗黙 & 否（分類） & マージ系ベースライン／忘却分析ツール \\
+MoE-Adapters~\cite{moeadapters} & 推論時ルーティング（OODは凍結へ） & 増加（アダプタ） & 明示 & 否（分類） & 推論時保持の別パラダイム \\
+\hline
+本研究 & 勾配部分空間直交化＋COCO（task-0）保護 & 一定 & 明示 & 是（目標） & --- \\
+\hline
+\end{tabularx}
+\end{table}

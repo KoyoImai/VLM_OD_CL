@@ -121,7 +121,42 @@ work_dirs/
 *.pth
 *.py~
 *.sh~
+*.pt
 
 
 #
 backup
+experiments/latex
+
+*.pdf
+
+# LaTeX build artifacts (intermediate files; *.log is already ignored above)
+*.aux
+*.bbl
+*.blg
+*.dvi
+*.xdv
+*.fdb_latexmk
+*.fls
+*.out
+*.toc
+*.lof
+*.lot
+*.nav
+*.snm
+*.vrb
+*.bcf
+*.run.xml
+*.idx
+*.ind
+*.ilg
+*.synctex.gz
+*.synctex(busy)
+# NOTE: *.pdf is intentionally NOT ignored so template assets (e.g. root.pdf)
+# and figure PDFs stay tracked. Add specific generated PDFs by path if needed.
+
+# Large regenerable analysis artifacts (Gram matrices / tensors) — keep on disk, not in git.
+# Each experiments/**/gram/*.pt is ~600MB and exceeds GitHub's 100MB/file limit.
+# Regenerate via experiments/exp_007/compute_gram.py.
+experiments/**/gram/
+*.pt

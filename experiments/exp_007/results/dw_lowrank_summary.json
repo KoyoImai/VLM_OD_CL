@@ -1,0 +1,338 @@
+[
+ {
+  "domain": "underwater",
+  "group": "neck",
+  "n": 3,
+  "eff_rank_ratio": 0.526,
+  "E_top16": 0.736,
+  "mean_frob": 4.4783
+ },
+ {
+  "domain": "underwater",
+  "group": "bbox_head",
+  "n": 18,
+  "eff_rank_ratio": 0.621,
+  "E_top16": 0.711,
+  "mean_frob": 0.7083
+ },
+ {
+  "domain": "underwater",
+  "group": "encoder",
+  "n": 90,
+  "eff_rank_ratio": 0.486,
+  "E_top16": 0.708,
+  "mean_frob": 3.3184
+ },
+ {
+  "domain": "underwater",
+  "group": "decoder",
+  "n": 50,
+  "eff_rank_ratio": 0.563,
+  "E_top16": 0.606,
+  "mean_frob": 2.1196
+ },
+ {
+  "domain": "underwater",
+  "group": "query_embedding",
+  "n": 1,
+  "eff_rank_ratio": 0.633,
+  "E_top16": 0.666,
+  "mean_frob": 2.0988
+ },
+ {
+  "domain": "underwater",
+  "group": "memory_trans_fc",
+  "n": 1,
+  "eff_rank_ratio": 0.398,
+  "E_top16": 0.722,
+  "mean_frob": 1.7143
+ },
+ {
+  "domain": "underwater",
+  "group": "text_feat_map",
+  "n": 1,
+  "eff_rank_ratio": 0.393,
+  "E_top16": 0.838,
+  "mean_frob": 3.6012
+ },
+ {
+  "domain": "aerial",
+  "group": "neck",
+  "n": 3,
+  "eff_rank_ratio": 0.517,
+  "E_top16": 0.748,
+  "mean_frob": 2.8434
+ },
+ {
+  "domain": "aerial",
+  "group": "bbox_head",
+  "n": 18,
+  "eff_rank_ratio": 0.623,
+  "E_top16": 0.715,
+  "mean_frob": 0.5083
+ },
+ {
+  "domain": "aerial",
+  "group": "encoder",
+  "n": 90,
+  "eff_rank_ratio": 0.477,
+  "E_top16": 0.726,
+  "mean_frob": 2.2741
+ },
+ {
+  "domain": "aerial",
+  "group": "decoder",
+  "n": 50,
+  "eff_rank_ratio": 0.565,
+  "E_top16": 0.605,
+  "mean_frob": 1.4435
+ },
+ {
+  "domain": "aerial",
+  "group": "query_embedding",
+  "n": 1,
+  "eff_rank_ratio": 0.636,
+  "E_top16": 0.657,
+  "mean_frob": 1.6524
+ },
+ {
+  "domain": "aerial",
+  "group": "memory_trans_fc",
+  "n": 1,
+  "eff_rank_ratio": 0.412,
+  "E_top16": 0.67,
+  "mean_frob": 1.061
+ },
+ {
+  "domain": "aerial",
+  "group": "text_feat_map",
+  "n": 1,
+  "eff_rank_ratio": 0.377,
+  "E_top16": 0.889,
+  "mean_frob": 2.6632
+ },
+ {
+  "domain": "microscopic",
+  "group": "neck",
+  "n": 3,
+  "eff_rank_ratio": 0.521,
+  "E_top16": 0.734,
+  "mean_frob": 3.693
+ },
+ {
+  "domain": "microscopic",
+  "group": "bbox_head",
+  "n": 18,
+  "eff_rank_ratio": 0.612,
+  "E_top16": 0.736,
+  "mean_frob": 0.6867
+ },
+ {
+  "domain": "microscopic",
+  "group": "encoder",
+  "n": 90,
+  "eff_rank_ratio": 0.481,
+  "E_top16": 0.72,
+  "mean_frob": 2.9681
+ },
+ {
+  "domain": "microscopic",
+  "group": "decoder",
+  "n": 50,
+  "eff_rank_ratio": 0.556,
+  "E_top16": 0.621,
+  "mean_frob": 1.8756
+ },
+ {
+  "domain": "microscopic",
+  "group": "query_embedding",
+  "n": 1,
+  "eff_rank_ratio": 0.632,
+  "E_top16": 0.666,
+  "mean_frob": 1.9227
+ },
+ {
+  "domain": "microscopic",
+  "group": "memory_trans_fc",
+  "n": 1,
+  "eff_rank_ratio": 0.386,
+  "E_top16": 0.751,
+  "mean_frob": 1.9538
+ },
+ {
+  "domain": "microscopic",
+  "group": "text_feat_map",
+  "n": 1,
+  "eff_rank_ratio": 0.385,
+  "E_top16": 0.831,
+  "mean_frob": 3.6603
+ },
+ {
+  "domain": "videogames",
+  "group": "neck",
+  "n": 3,
+  "eff_rank_ratio": 0.58,
+  "E_top16": 0.669,
+  "mean_frob": 2.9354
+ },
+ {
+  "domain": "videogames",
+  "group": "bbox_head",
+  "n": 21,
+  "eff_rank_ratio": 0.547,
+  "E_top16": 0.785,
+  "mean_frob": 0.511
+ },
+ {
+  "domain": "videogames",
+  "group": "encoder",
+  "n": 90,
+  "eff_rank_ratio": 0.49,
+  "E_top16": 0.709,
+  "mean_frob": 2.8182
+ },
+ {
+  "domain": "videogames",
+  "group": "decoder",
+  "n": 50,
+  "eff_rank_ratio": 0.547,
+  "E_top16": 0.634,
+  "mean_frob": 1.7427
+ },
+ {
+  "domain": "videogames",
+  "group": "query_embedding",
+  "n": 1,
+  "eff_rank_ratio": 0.611,
+  "E_top16": 0.692,
+  "mean_frob": 1.6984
+ },
+ {
+  "domain": "videogames",
+  "group": "memory_trans_fc",
+  "n": 1,
+  "eff_rank_ratio": 0.377,
+  "E_top16": 0.716,
+  "mean_frob": 1.4027
+ },
+ {
+  "domain": "videogames",
+  "group": "text_feat_map",
+  "n": 1,
+  "eff_rank_ratio": 0.427,
+  "E_top16": 0.798,
+  "mean_frob": 4.1682
+ },
+ {
+  "domain": "documents",
+  "group": "neck",
+  "n": 3,
+  "eff_rank_ratio": 0.476,
+  "E_top16": 0.777,
+  "mean_frob": 4.0931
+ },
+ {
+  "domain": "documents",
+  "group": "bbox_head",
+  "n": 18,
+  "eff_rank_ratio": 0.609,
+  "E_top16": 0.699,
+  "mean_frob": 0.9857
+ },
+ {
+  "domain": "documents",
+  "group": "encoder",
+  "n": 90,
+  "eff_rank_ratio": 0.485,
+  "E_top16": 0.709,
+  "mean_frob": 4.0217
+ },
+ {
+  "domain": "documents",
+  "group": "decoder",
+  "n": 50,
+  "eff_rank_ratio": 0.581,
+  "E_top16": 0.578,
+  "mean_frob": 2.8888
+ },
+ {
+  "domain": "documents",
+  "group": "query_embedding",
+  "n": 1,
+  "eff_rank_ratio": 0.635,
+  "E_top16": 0.64,
+  "mean_frob": 2.473
+ },
+ {
+  "domain": "documents",
+  "group": "memory_trans_fc",
+  "n": 1,
+  "eff_rank_ratio": 0.417,
+  "E_top16": 0.675,
+  "mean_frob": 2.1927
+ },
+ {
+  "domain": "documents",
+  "group": "text_feat_map",
+  "n": 1,
+  "eff_rank_ratio": 0.422,
+  "E_top16": 0.845,
+  "mean_frob": 5.3384
+ },
+ {
+  "domain": "electromagnetic",
+  "group": "neck",
+  "n": 3,
+  "eff_rank_ratio": 0.585,
+  "E_top16": 0.657,
+  "mean_frob": 5.2415
+ },
+ {
+  "domain": "electromagnetic",
+  "group": "bbox_head",
+  "n": 18,
+  "eff_rank_ratio": 0.631,
+  "E_top16": 0.702,
+  "mean_frob": 0.9455
+ },
+ {
+  "domain": "electromagnetic",
+  "group": "encoder",
+  "n": 90,
+  "eff_rank_ratio": 0.516,
+  "E_top16": 0.664,
+  "mean_frob": 4.1259
+ },
+ {
+  "domain": "electromagnetic",
+  "group": "decoder",
+  "n": 50,
+  "eff_rank_ratio": 0.593,
+  "E_top16": 0.558,
+  "mean_frob": 2.6872
+ },
+ {
+  "domain": "electromagnetic",
+  "group": "query_embedding",
+  "n": 1,
+  "eff_rank_ratio": 0.634,
+  "E_top16": 0.641,
+  "mean_frob": 2.5018
+ },
+ {
+  "domain": "electromagnetic",
+  "group": "memory_trans_fc",
+  "n": 1,
+  "eff_rank_ratio": 0.415,
+  "E_top16": 0.643,
+  "mean_frob": 2.2193
+ },
+ {
+  "domain": "electromagnetic",
+  "group": "text_feat_map",
+  "n": 1,
+  "eff_rank_ratio": 0.422,
+  "E_top16": 0.82,
+  "mean_frob": 5.0266
+ }
+]

@@ -1,0 +1,123 @@
+\subsection{継続学習の問題設定と三つのシナリオ}
+
+継続学習では，学習器はタスク系列 $\mathcal{T}_1,\mathcal{T}_2,\ldots,\mathcal{T}_T$ を逐次に観測し，各時点 $t$ では現タスクのデータ分布 $\mathcal{D}_t=\{(x,y)\}$ のみにアクセスできる．過去タスクのデータ $\mathcal{D}_{1:t-1}$ は原則として再利用できないという制約のもとで，観測済みの全タスクに対して良好な性能を維持することが目標となる．形式的には，パラメータ $\theta$ に対し，逐次に得られる損失の総和
+\begin{equation}
+\min_{\theta}\ \sum_{i=1}^{T}\ \mathbb{E}_{(x,y)\sim\mathcal{D}_i}\bigl[\ell\bigl(f_\theta(x),y\bigr)\bigr]
+\end{equation}
+を，各 $\mathcal{D}_i$ が逐次にしか観測できない制約下で近似的に最小化する問題と見なせる．同時学習（joint training）では全タスクのデータを同時に利用できるため，この和を直接最小化できるが，継続学習では時点 $t$ で $\mathcal{D}_{1:t-1}$ が利用できない点が本質的な困難となる．
+
+van de Ven ら \cite{threescenarios} は継続学習を三つのシナリオに整理した．第一に Task-Incremental Learning（Task-IL）では，推論時にタスク識別子 $t$ が与えられ，タスク固有の出力ヘッドを選択できる．第二に Domain-Incremental Learning（Domain-IL）では，出力空間（クラス集合）は各タスクで共通だが入力分布 $p(x)$ がタスクごとに変化し，推論時にタスク識別子は与えられない．第三に Class-Incremental Learning（Class-IL）では，タスクごとに新しいクラスが追加され，推論時にはタスク識別子なしで全クラスから予測する必要がある．一般に難易度は Task-IL $\leq$ Domain-IL $\leq$ Class-IL の順に増大し，特に Class-IL ではタスク間でロジットを較正する必要から忘却が顕著となる \cite{clsurvey}．
+
+本研究の設定は，事前学習済み VLM 検出器 MM-Grounding DINO を起点とし，COCO 検出を task-0 とした後，海中・空撮・ゲーム画面・顕微・文書などのドメインを逐次追加する構成である．各ドメインで入力分布 $p(x)$ が大きく変化する一方，検出という課題定式化（テキストプロンプトと領域の対応付け）は共通であり，推論時にドメイン識別子を前提としない運用を想定するため，主たる性質は Domain-IL に分類される．ただし VLM 検出器はクラスをテキストとして開語彙的に扱うため，ドメイン間でクラス集合がほぼ非重複であるという点で純粋な Domain-IL とは異なり，クラス非重複ハイブリッドと位置づけられる．すなわち出力空間が固定の閉集合ではなくテキスト埋め込み空間上で連続的に拡張される点で，Domain-IL の枠組みを継承しつつ Class-IL 的な側面も併せ持つ．この性質は，忘却が単にヘッドの較正ずれとして現れるのではなく，視覚特徴とテキスト埋め込みの整合（grounding）の劣化として現れることを意味し，理論的解析の際に注意を要する．
+
+\subsection{安定性可塑性ジレンマと忘却の評価指標}
+
+継続学習の中核には安定性可塑性ジレンマ（stability--plasticity dilemma）がある．可塑性とは新タスクへ適応する能力，安定性とは過去タスクの知識を保持する能力であり，両者は一般にトレードオフの関係にある．パラメータをまったく更新しなければ安定性は完全だが可塑性はなく，自由に更新すれば可塑性は得られるが過去タスクの損失が増大する．破滅的忘却（catastrophic forgetting）とは，新タスクの学習により過去タスクの性能が急激に劣化する現象を指し，形式的にはタスク $i$ 学習直後の性能と，後続タスク学習後の性能の差として定量化される \cite{clsurvey}．
+
+評価には精度行列 $R\in\mathbb{R}^{T\times T}$ を用いる．$R_{i,j}$ をタスク $\mathcal{T}_i$ まで学習を終えた時点でのタスク $\mathcal{T}_j$ に対する評価指標（検出では mAP）とすると，主要な集約指標は以下のように定義される．全タスク学習後の平均精度は
+\begin{equation}
+\mathrm{ACC}=\frac{1}{T}\sum_{j=1}^{T}R_{T,j}
+\end{equation}
+である．忘却量（Forgetting）は，各タスクについて過去の最良性能から最終性能への低下を平均したもので
+\begin{equation}
+\mathrm{FGT}=\frac{1}{T-1}\sum_{j=1}^{T-1}\Bigl(\max_{i\in\{j,\ldots,T-1\}}R_{i,j}-R_{T,j}\Bigr)
+\end{equation}
+と定義される．後方転移（Backward Transfer, BWT）は新タスク学習が過去タスクへ与える影響を表し
+\begin{equation}
+\mathrm{BWT}=\frac{1}{T-1}\sum_{j=1}^{T-1}\bigl(R_{T,j}-R_{j,j}\bigr)
+\end{equation}
+で与えられる．$\mathrm{BWT}<0$ は忘却を意味し，おおむね $\mathrm{BWT}\approx-\mathrm{FGT}$ の関係にある．前方転移（Forward Transfer, FWT）は過去の学習が未学習タスクに与える有利さを表し，ランダム初期化モデルのタスク $j$ 性能 $\bar{R}_j$ を基準として
+\begin{equation}
+\mathrm{FWT}=\frac{1}{T-1}\sum_{j=2}^{T}\bigl(R_{j-1,j}-\bar{R}_j\bigr)
+\end{equation}
+と定義される．事前学習 VLM の場合 $R_{j-1,j}$ はゼロショット性能を含むため FWT は強い正の値をとりやすい．
+
+本研究では，これらに加え事前学習ゼロショット保持を測る ZCOCO（COCO 検出のゼロショット mAP）を独立した監視軸とする．COCO を task-0 としたうえで，$R_{t,0}$（時点 $t$ での COCO 性能）の時系列を別途追跡することで，汎用知識の劣化を忘却指標とは分離して評価する．検出特有の集約として，調和平均型の指標 hAP（新ドメイン適応・過去ドメイン保持・ZCOCO 保持の三者の調和平均など）を導入すれば，三目標の同時達成度を単一スカラーで監視できる．調和平均は三者のいずれかが極端に低い場合に大きく罰せられるため，可塑性・安定性・ゼロショット保持のバランスを評価する指標として適切である．
+
+\subsection{正則化に基づく手法：EWC とその系譜}
+
+正則化系の手法は，パラメータの更新そのものを罰則項で抑制することで忘却を緩和する．代表例である Elastic Weight Consolidation（EWC）\cite{ewc} は，過去タスクの事後分布をラプラス近似することに基づく．タスク $A$ を学習して得た最適解を $\theta_A^{*}$ とし，新タスク $B$ を学習する際の目的関数を
+\begin{equation}
+\mathcal{L}(\theta)=\mathcal{L}_B(\theta)+\frac{\lambda}{2}\sum_i F_i\,\bigl(\theta_i-\theta_{A,i}^{*}\bigr)^2
+\end{equation}
+とする．ここで $F_i$ は $\theta_A^{*}$ で評価した Fisher 情報行列の対角成分であり，パラメータ $\theta_i$ の過去タスクに対する重要度を表す．Fisher 情報は対数尤度の勾配の二次モーメント
+\begin{equation}
+F_i=\mathbb{E}_{x\sim\mathcal{D}_A}\Bigl[\Bigl(\frac{\partial \log p_\theta(y\mid x)}{\partial \theta_i}\Bigr)^2\Bigr]\Big|_{\theta=\theta_A^{*}}
+\end{equation}
+で与えられる．直観的には，重要度 $F_i$ の高いパラメータほど $\theta_{A,i}^{*}$ から離れにくくし，重要でないパラメータには可塑性を残す．これは過去タスクの損失曲面を $\theta_A^{*}$ まわりで二次近似し
+\begin{equation}
+\mathcal{L}_A(\theta)\approx \mathcal{L}_A(\theta_A^{*})+\frac{1}{2}(\theta-\theta_A^{*})^{\top}F(\theta-\theta_A^{*})
+\end{equation}
+とみなすことに対応する（一次項は最適点で消える）．
+
+手順としては，(1) タスク $A$ を通常通り学習し $\theta_A^{*}$ を得る，(2) $\mathcal{D}_A$ で勾配二乗の期待値から $F$ を推定して保存する，(3) タスク $B$ では上式の罰則付き目的を最適化する，という流れになる．タスクが増えるたびに罰則項が累積する素朴な実装に対し，online-EWC は Fisher を一つの行列に減衰係数 $\gamma$ で逐次統合し $F^{(t)}\leftarrow\gamma F^{(t-1)}+F_t$ とすることでメモリを一定に保つ．Synaptic Intelligence（SI）は学習軌道に沿った損失減少への寄与を積分してオンラインに重要度を推定し，Memory Aware Synapses（MAS）は出力の感度 $\|\partial f_\theta(x)/\partial\theta_i\|$ から教師なしに重要度を測る．Learning without Forgetting（LwF）は重みではなく機能（出力）を正則化し，旧モデルのソフト出力を蒸留対象とする知識蒸留型に分類される \cite{clsurvey}．
+
+主要な実験設定として，EWC は Permuted MNIST や逐次強化学習（Atari）で素朴な逐次学習を上回る忘却抑制を示した \cite{ewc}．一方で，対角 Fisher 近似はパラメータ間の相関を無視するため，層数が深く相関の強い大規模モデルでは罰則が過剰／過小になりやすいことが知られる．長所は実装が容易で過去データを保存しない点，短所はタスク数増大に伴う罰則の累積による可塑性の低下，および対角近似の限界である．本研究への含意としては，EWC を本体パラメータ $\theta$ に直接課すと巨大な VLM の可塑性を著しく損なうおそれがあるため，むしろ LoRA 分岐という低次元の更新部分空間に限って重要度正則化を補助的に課す，あるいは ZCOCO 保持の観点から COCO で推定した Fisher を task-0 の保護に用いる，といった限定的併用が現実的である．ただし後述の勾配射影系が部分空間レベルで干渉を直接制御するのに対し，正則化系はあくまで軟制約である点に留意する．
+
+\subsection{勾配射影に基づく手法：GPM・Adam-NSCL・OGD}
+
+勾配射影系は，過去タスクにとって重要な方向を陽に同定し，その方向と干渉しないように更新を制約する．正則化系が罰則という軟制約を課すのに対し，こちらは更新を部分空間へ射影する硬制約に近い点が特徴である．
+
+Gradient Projection Memory（GPM）\cite{gpm} は，各層の入力活性化を解析して過去タスクが用いる重要部分空間を同定する．タスク $t$ の学習後，層 $l$ の活性化行列 $\mathbf{R}^l_t$（列が各サンプルの入力特徴）を特異値分解し，累積寄与率がしきい値 $\epsilon_{th}$ を超える上位特異ベクトルを取り出して，これまでの基底に新規方向のみを追記することで基底行列 $\mathbf{M}^l$ を構築する．新タスクの学習では，生勾配 $\nabla_W \mathcal{L}$ を過去部分空間の直交補空間へ射影してから更新する．射影行列を $\mathbf{P}=\mathbf{M}(\mathbf{M}^{\top}\mathbf{M})^{-1}\mathbf{M}^{\top}$（基底が正規直交なら $\mathbf{P}=\mathbf{M}\mathbf{M}^{\top}$）とすると，更新は
+\begin{equation}
+\nabla_W^{\perp}\mathcal{L}=\nabla_W \mathcal{L}-\nabla_W \mathcal{L}\,\mathbf{P}
+\end{equation}
+と書ける．これにより，過去タスクの入力が張る部分空間内では重みが実質的に変化せず，線形層の出力が保たれるため忘却が抑制される．新規基底の追記は
+\begin{equation}
+\hat{\mathbf{R}}^l_t=\mathbf{R}^l_t-\mathbf{M}^l(\mathbf{M}^l)^{\top}\mathbf{R}^l_t,\qquad \hat{\mathbf{R}}^l_t=\mathbf{U}\boldsymbol{\Sigma}\mathbf{V}^{\top}
+\end{equation}
+と，残差 $\hat{\mathbf{R}}^l_t$ を特異値分解して有意な左特異ベクトルを $\mathbf{M}^l$ に加えることで行う．
+
+Adam-NSCL \cite{adamnscl} は，活性化ではなく各線形層の入力特徴の無中心共分散行列 $\mathbf{X}^{\top}\mathbf{X}$ を過去タスク全体について蓄積し，その近似零空間（null space）へ更新を射影する．Adam が生成した候補更新を $\Delta\theta$ とし，過去特徴共分散 $\bar{\mathbf{X}}=\sum_{s<t}\mathbf{X}_s^{\top}\mathbf{X}_s$ を特異値分解して小特異値に対応する右特異ベクトルが張る零空間の射影行列 $\mathbf{P}_{\mathrm{null}}=\mathbf{U}_2\mathbf{U}_2^{\top}$ を構成すると，実際の更新は
+\begin{equation}
+\Delta\theta^{\perp}=\mathbf{P}_{\mathrm{null}}\,\Delta\theta
+\end{equation}
+となる．零空間の条件 $\bar{\mathbf{X}}\,\Delta\theta^{\perp}\approx \mathbf{0}$ が満たされれば，過去タスクの特徴に対する層出力 $\mathbf{X}_s\,\Delta\theta^{\perp}\approx\mathbf{0}$ が保たれ，安定性が確保される．これは GPM の直交射影を共分散の零空間という形で連続的に緩和した定式化であり，特異値のしきい値で安定性と可塑性のバランスを調整する点に特徴がある．Adam-NSCL は CIFAR-100 や TinyImageNet の Task-IL/Class-IL ベンチマークで当時の正則化系・射影系を上回る平均精度を報告した \cite{adamnscl}．
+
+Orthogonal Gradient Descent（OGD）\cite{ogd} は，重みではなく出力勾配の空間で直交化する．タスク $i$ の各サンプル $x$ について出力ロジットの勾配 $\nabla_\theta f_\theta(x)$ を保存し，これらが張る部分空間 $S$ を構成する．新タスクの勾配 $g$ を $S$ の直交補空間へ Gram--Schmidt により射影し
+\begin{equation}
+\tilde{g}=g-\sum_{v\in S}\frac{\langle g,v\rangle}{\langle v,v\rangle}\,v
+\end{equation}
+として更新に用いる．これにより，一次近似の範囲で過去タスクの出力 $f_\theta(x)$ が更新前後で不変に保たれる（$\langle\tilde g,\nabla_\theta f_\theta(x)\rangle\approx 0$）．OGD の理論的含意は NTK 領域での頑健性保証にあり，後述するように線形化体制では過去タスク性能を原理的に保持できることが示される \cite{ntkoverlap}．
+
+これら射影系の長所は，干渉を方向レベルで陽に制御するため正則化系より忘却抑制が直接的で，ハイパーパラメータ感度が比較的低い点である．短所は，タスク数増大に伴い保護部分空間が拡大し，残る自由な方向が枯渇して可塑性が逓減する点，および基底や勾配の保存にメモリを要する点である．本研究への含意は大きい．本体凍結＋LoRA 分岐という構成では，更新は LoRA の低ランク行列に限定されるため，過去タスク勾配との直交化を低次元部分空間内で行えば，フル更新版の射影系よりはるかに小さなメモリと計算で安定性を確保できる．これが提案手法の InfLoRA 型設計の理論的根拠であり，さらに COCO を task-0 として最初に保護部分空間へ組み込むことで，ZCOCO の保持を勾配射影の枠組みの中で原理的に扱える点が利点となる．
+
+\subsection{NTK 理論による忘却の定式化}
+
+Neural Tangent Kernel（NTK）は，幅が十分大きいネットワークの学習を初期パラメータまわりの線形化として記述する枠組みである．線形化体制ではモデルは特徴写像 $\phi(x)=\nabla_\theta f_{\theta_0}(x)$ に関して実質的に線形であり，学習はカーネル $K(x,x')=\phi(x)^{\top}\phi(x')$ に支配される．Doan ら \cite{ntkoverlap} は，この線形化体制において継続学習の忘却を NTK overlap matrix を用いて厳密に定式化した．
+
+タスクの特徴写像 $\phi(X^k)$ の特異値分解を $\phi(X^k)=U_k\Sigma_k V_k^{\top}$ とすると，ソースタスク $\tau_S$ と他タスク $k$ の間の NTK overlap matrix は右特異ベクトルの内積
+\begin{equation}
+O^{\tau_S\rightarrow k}=V_{\tau_S}^{\top}V_k
+\end{equation}
+で定義される．その特異値は二つのタスクが張る特徴部分空間どうしの主角度の余弦に等しく，値が $1$ に近いほどタスクが整合（アラインメント）していることを意味する．逐次学習でソースタスク $\tau_S$ から目標タスク $\tau_T$ まで学習を進めたときの $\tau_S$ における忘却は，おおよそ
+\begin{equation}
+\Delta^{\tau_S\rightarrow\tau_T}(X^{\tau_S})=\Bigl\|\sum_{k=\tau_S+1}^{\tau_T} U_{\tau_S}\Sigma_{\tau_S}\,O^{\tau_S\rightarrow k}\,M_k\,\tilde{y}_k\Bigr\|_2^2
+\end{equation}
+と表される（$M_k,\tilde{y}_k$ は目標タスク側の学習に関わる項）．この表式から読み取れる中核的な知見は，忘却が overlap matrix $O$ の大きさに比例して増大するという点である．すなわちタスク間の特徴整合が高い（$O$ の特異値が大きい）ほど，新タスクの更新がソースタスクの予測を引きずって忘却が増大する．逆に $O\approx\mathbf{0}$，つまりタスクが直交していれば忘却は消失する．OGD が出力勾配（NTK 特徴に対応）の直交化を行うのは，まさにこの $O$ を小さくする操作に相当し，線形化体制での忘却抑制が理論的に保証される所以である．
+
+重要な指摘として，Doan ら \cite{ntkoverlap} は忘却がタスク類似度に対して必ずしも単調でないことを示した．直観的には類似タスクほど干渉が少なそうだが，実際には類似タスクは特徴を共有するため overlap が大きくなり，かえって忘却を増やしうる．一方で完全に無関係なタスクは overlap が小さく忘却は少ないが転移の恩恵も得られない．したがって忘却とタスク類似度の関係は非単調であり，中間的な類似度で複雑な振る舞いを示す．本研究への含意として，事前学習 VLM の COCO（task-0）と各ドメインの特徴整合の度合いが ZCOCO 劣化を左右することが理論的に予測される．海中や顕微のように COCO と特徴が大きく異なるドメインでは overlap が小さく ZCOCO は劣化しにくい一方，COCO に近い自然画像系ドメインでは overlap が大きく，明示的な直交保護なしには ZCOCO が劣化しやすい．提案手法が COCO 勾配部分空間への直交化を陽に課すことは，この overlap 項を能動的に縮小して ZCOCO 劣化の理論的上界を抑える操作として解釈できる．
+
+\subsection{微調整の低ランク性：内在次元}
+
+事前学習モデルの微調整に必要な有効自由度が低いという経験事実は，勾配射影系や LoRA 型手法の正当化に直結する．Li ら \cite{intrinsicdim} は内在次元（intrinsic dimension）を，目的関数を十分小さくするのに必要な最小の独立パラメータ数として定義した．全パラメータ $\theta\in\mathbb{R}^D$ を低次元 $d$ の確率的部分空間に制限し
+\begin{equation}
+\theta=\theta_0+P\,\eta,\qquad \eta\in\mathbb{R}^d,\ P\in\mathbb{R}^{D\times d}
+\end{equation}
+として $\eta$ のみを最適化する（$\theta_0$ は初期値，$P$ はランダムな射影行列で固定）．フルモデル性能のある割合（典型的には $90\%$）を達成できる最小の $d$ を内在次元 $d_{\mathrm{int}}$ と定める．多くの課題で $d_{\mathrm{int}}\ll D$ であり，課題が複雑なほど $d_{\mathrm{int}}$ が大きくなることが示された \cite{intrinsicdim}．
+
+Aghajanyan らはこの考えを事前学習言語モデルの微調整に適用し，RoBERTa などでは数百次元程度の極めて小さな部分空間で下流タスクの大半の性能を回復できること，さらに大きな事前学習モデルほど内在次元が小さくなる傾向を報告した（具体値は (要確認) だが定性的傾向は再現性が高い）．これは LoRA の基礎づけとなる事実であり，重み更新 $\Delta W$ が低ランクで十分に表現できることを示唆する．
+
+長所は，微調整に要する有効自由度が低いという保証が，低ランク更新（LoRA）やランダム部分空間訓練の合理性を裏づける点である．短所は，内在次元の測定がランダム射影 $P$ の選び方や $90\%$ という性能基準に依存し，測定値が手続き依存である点である．本研究への含意は明確である．VLM 検出器の各ドメイン適応に必要な更新が低ランクならば，LoRA 分岐のランク $r$ を小さく抑えても可塑性は十分に確保でき，かつ更新部分空間が低次元であることは過去タスク勾配との直交化に要する保護部分空間も小さくて済むことを意味する．すなわち低ランク性は，可塑性（小さい $r$ で適応可能）と安定性（小さい部分空間の直交保護で済む）の両立を同時に支える基盤である．
+
+\subsection{損失地形：線形モード接続性}
+
+線形モード接続性（Linear Mode Connectivity, LMC）は，二つの解 $\theta_a,\theta_b$ を結ぶ線形経路上で損失が低く保たれる現象を指す．二つの解が線形接続しているとは，補間 $\theta(\alpha)=(1-\alpha)\theta_a+\alpha\theta_b$（$\alpha\in[0,1]$）に沿って
+\begin{equation}
+\max_{\alpha\in[0,1]}\ \mathcal{L}\bigl((1-\alpha)\theta_a+\alpha\theta_b\bigr)\approx \mathcal{L}(\theta_a)\approx \mathcal{L}(\theta_b)
+\end{equation}
+が成り立つことをいう（経路上に損失障壁がない）．Mirzadeh ら \cite{lmc} は，同一の初期化を共有する場合，継続学習で逐次に得られる解（sequential minimum）と全タスク同時学習で得られる解（multitask/joint minimum）が，低損失の線形経路でしばしば接続されることを経験的に示した．すなわち逐次解と同時解は損失地形上で「近く」，両者の間に高い障壁が存在しないことが多い．
+
+この知見は忘却の幾何学的な理解を与える．逐次学習が陥る解は，同時学習の良解の近傍に存在しうるにもかかわらず，逐次最適化の軌道がその良解からずれた盆地（basin）に収束してしまうために忘却が生じる，と解釈できる．Mirzadeh ら \cite{lmc} はこの観察を利用し，逐次に得る各タスクの極小を同時解のように振る舞わせる制約（解どうしを線形接続が保たれる盆地内に留める正則化）を提案し，複数の視覚ベンチマークで既存の継続学習手法を上回る性能を報告した．LMC が成立する前提として同一初期化の共有が重要であり，初期化が異なると一般に線形経路上に損失障壁が現れる点も指摘されている．
+
+本研究への含意は二点ある．第一に，事前学習 VLM という強力な共通初期化を全ドメインが共有する本設定は，LMC が成立しやすい好条件であり，各ドメイン解が事前学習解の近傍盆地に留まりやすいことを示唆する．これは ZCOCO 保持の観点で有利に働く．第二に，本体凍結＋低ランク LoRA 更新は，パラメータ移動量を $\Delta\theta=B\eta$（$B$ は LoRA 部分空間の基底）という低次元部分空間に明示的に制限する操作であり，解を事前学習解の近傍に幾何学的に拘束する点で LMC の良解盆地から離れにくくする効果を持つ．さらに過去タスク勾配との直交化は，異なるドメイン解どうしが互いの低損失盆地を破壊しない方向へ更新を導くため，逐次解の集合が共通の低損失領域に留まる確率を高めると期待される．以上から，提案手法（InfLoRA 型＋COCO-task0 直交保護）は，NTK 理論が示す overlap 縮小と，内在次元が保証する低ランク十分性，そして LMC が示す近傍盆地保持という三つの理論的基盤の交点に位置づけられる．

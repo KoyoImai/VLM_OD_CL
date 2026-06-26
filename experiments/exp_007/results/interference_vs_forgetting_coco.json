@@ -1,0 +1,284 @@
+{
+ "rows": [
+  {
+   "domain": "underwater",
+   "F_COCO": 0.09,
+   "I_abs": 8889231073.756237,
+   "I_rel": 0.0044,
+   "I_dir": 0.3443,
+   "dW_norm2": 1639.73
+  },
+  {
+   "domain": "aerial",
+   "F_COCO": 0.186,
+   "I_abs": 3904770822.2296295,
+   "I_rel": 0.0024,
+   "I_dir": 0.352,
+   "dW_norm2": 740.712
+  },
+  {
+   "domain": "microscopic",
+   "F_COCO": 0.177,
+   "I_abs": 7795694693.02247,
+   "I_rel": 0.0039,
+   "I_dir": 0.345,
+   "dW_norm2": 1306.06
+  },
+  {
+   "domain": "videogames",
+   "F_COCO": 0.18,
+   "I_abs": 5540725446.405889,
+   "I_rel": 0.0038,
+   "I_dir": 0.3585,
+   "dW_norm2": 1109.739
+  },
+  {
+   "domain": "documents",
+   "F_COCO": 0.229,
+   "I_abs": 11638208611.393188,
+   "I_rel": 0.0057,
+   "I_dir": 0.3242,
+   "dW_norm2": 2499.037
+  },
+  {
+   "domain": "electromagnetic",
+   "F_COCO": 0.173,
+   "I_abs": 11815832417.194921,
+   "I_rel": 0.0067,
+   "I_dir": 0.3359,
+   "dW_norm2": 2536.968
+  }
+ ],
+ "F_COCO": {
+  "underwater": 0.09,
+  "aerial": 0.186,
+  "microscopic": 0.177,
+  "videogames": 0.18,
+  "documents": 0.229,
+  "electromagnetic": 0.173
+ },
+ "corr": {
+  "I_abs": {
+   "pearson": 0.082,
+   "spearman": -0.314
+  },
+  "I_rel": {
+   "pearson": 0.119,
+   "spearman": -0.314
+  },
+  "I_dir": {
+   "pearson": -0.338,
+   "spearman": 0.029
+  },
+  "dW_norm2": {
+   "pearson": 0.187,
+   "spearman": -0.314
+  }
+ },
+ "top_layers": {
+  "underwater": [
+   [
+    "encoder.layers.0.ffn.layers.0.0.weight",
+    2255453025.8362
+   ],
+   [
+    "encoder.layers.1.ffn.layers.0.0.weight",
+    1261200891.604
+   ],
+   [
+    "encoder.layers.2.ffn.layers.0.0.weight",
+    973098188.4533
+   ],
+   [
+    "encoder.layers.3.ffn.layers.0.0.weight",
+    949041106.2831
+   ],
+   [
+    "encoder.layers.5.ffn.layers.0.0.weight",
+    477158041.0323
+   ],
+   [
+    "encoder.layers.4.ffn.layers.0.0.weight",
+    461891333.9287
+   ],
+   [
+    "encoder.layers.1.ffn.layers.1.weight",
+    389222259.231
+   ],
+   [
+    "encoder.layers.0.ffn.layers.1.weight",
+    381029062.1963
+   ]
+  ],
+  "aerial": [
+   [
+    "encoder.layers.0.ffn.layers.0.0.weight",
+    849810864.3828
+   ],
+   [
+    "encoder.layers.1.ffn.layers.0.0.weight",
+    471771339.135
+   ],
+   [
+    "encoder.layers.3.ffn.layers.0.0.weight",
+    374644954.095
+   ],
+   [
+    "encoder.layers.2.ffn.layers.0.0.weight",
+    351074269.0167
+   ],
+   [
+    "encoder.layers.1.ffn.layers.1.weight",
+    252502703.6007
+   ],
+   [
+    "encoder.layers.5.ffn.layers.0.0.weight",
+    236528652.4606
+   ],
+   [
+    "encoder.layers.0.ffn.layers.1.weight",
+    204601771.7535
+   ],
+   [
+    "encoder.layers.4.ffn.layers.0.0.weight",
+    204534565.001
+   ]
+  ],
+  "microscopic": [
+   [
+    "encoder.layers.0.ffn.layers.0.0.weight",
+    1741040903.3922
+   ],
+   [
+    "encoder.layers.1.ffn.layers.0.0.weight",
+    1187442679.3499
+   ],
+   [
+    "encoder.layers.2.ffn.layers.0.0.weight",
+    834972403.6842
+   ],
+   [
+    "encoder.layers.3.ffn.layers.0.0.weight",
+    784116400.2256
+   ],
+   [
+    "encoder.layers.5.ffn.layers.0.0.weight",
+    440239426.3291
+   ],
+   [
+    "encoder.layers.4.ffn.layers.0.0.weight",
+    402219356.0537
+   ],
+   [
+    "encoder.layers.1.ffn.layers.1.weight",
+    399035453.3856
+   ],
+   [
+    "encoder.layers.0.ffn.layers.1.weight",
+    366498810.7627
+   ]
+  ],
+  "videogames": [
+   [
+    "encoder.layers.0.ffn.layers.0.0.weight",
+    918072175.2839
+   ],
+   [
+    "encoder.layers.1.ffn.layers.0.0.weight",
+    656060420.8676
+   ],
+   [
+    "encoder.layers.3.ffn.layers.0.0.weight",
+    642428044.7527
+   ],
+   [
+    "encoder.layers.2.ffn.layers.0.0.weight",
+    553511017.9705
+   ],
+   [
+    "encoder.layers.5.ffn.layers.0.0.weight",
+    366402950.7533
+   ],
+   [
+    "encoder.layers.4.ffn.layers.0.0.weight",
+    361934812.8446
+   ],
+   [
+    "encoder.layers.0.ffn.layers.1.weight",
+    318845714.0803
+   ],
+   [
+    "encoder.layers.1.ffn.layers.1.weight",
+    288829840.0165
+   ]
+  ],
+  "documents": [
+   [
+    "encoder.layers.0.ffn.layers.0.0.weight",
+    1944842129.521
+   ],
+   [
+    "encoder.layers.2.ffn.layers.0.0.weight",
+    1496555569.6996
+   ],
+   [
+    "encoder.layers.3.ffn.layers.0.0.weight",
+    1423018736.2424
+   ],
+   [
+    "encoder.layers.1.ffn.layers.0.0.weight",
+    1283090999.749
+   ],
+   [
+    "encoder.layers.4.ffn.layers.0.0.weight",
+    911862032.6087
+   ],
+   [
+    "encoder.layers.5.ffn.layers.0.0.weight",
+    759747348.6169
+   ],
+   [
+    "encoder.layers.1.ffn.layers.1.weight",
+    649360432.8945
+   ],
+   [
+    "encoder.layers.0.ffn.layers.1.weight",
+    568818682.1698
+   ]
+  ],
+  "electromagnetic": [
+   [
+    "encoder.layers.0.ffn.layers.0.0.weight",
+    2472121528.7065
+   ],
+   [
+    "encoder.layers.1.ffn.layers.0.0.weight",
+    1632795033.1089
+   ],
+   [
+    "encoder.layers.2.ffn.layers.0.0.weight",
+    1321484631.4403
+   ],
+   [
+    "encoder.layers.3.ffn.layers.0.0.weight",
+    1311362540.2353
+   ],
+   [
+    "encoder.layers.5.ffn.layers.0.0.weight",
+    714002802.051
+   ],
+   [
+    "encoder.layers.4.ffn.layers.0.0.weight",
+    711333843.5368
+   ],
+   [
+    "encoder.layers.1.ffn.layers.1.weight",
+    496874718.6132
+   ],
+   [
+    "encoder.layers.0.ffn.layers.1.weight",
+    442144177.9985
+   ]
+  ]
+ }
+}

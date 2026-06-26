@@ -1,0 +1,9 @@
+# underwater LoRA sweep (alpha=rank, eff64, 20ep, seed0). 基準: zs uw0.051/COCO0.504, frozenFT 0.316/0.414, LoRA(1e-4,r16) 0.218/0.417
+lr1e-3_r16  adapt=[coco/bbox_mAP: 0.3150]  COCO=[coco/bbox_mAP: 0.3150]
+lr1e-3_r32  adapt=[coco/bbox_mAP: 0.3350]  COCO=[coco/bbox_mAP: 0.3230]
+lr1e-3_r64  adapt=[coco/bbox_mAP: 0.3360]  COCO=[coco/bbox_mAP: 0.2500]
+lr5e-3_r16  adapt=[coco/bbox_mAP: 0.3220]  COCO=[coco/bbox_mAP: 0.1360]
+lr5e-3_r32  adapt=[coco/bbox_mAP: 0.2570]  COCO=[coco/bbox_mAP: 0.0970]
+lr5e-3_r64  TRAIN_FAILED
+lr1e-4_r32  adapt=[coco/bbox_mAP: 0.2410]  COCO=[coco/bbox_mAP: 0.4120]
+lr1e-4_r64  adapt=[coco/bbox_mAP: 0.2560]  COCO=[coco/bbox_mAP: 0.3930]

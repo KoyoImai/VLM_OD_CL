@@ -1,0 +1,397 @@
+\subsection{重み変化 $\Delta W$ の低ランク解析}
+\label{subsec:deltaw-lowrank}
+
+何を測るか／動機について述べる．
+ドメイン増加型の継続学習では，あるドメインへの追加学習が共有検出経路（decoder，encoder，neck，head）の重みを上書きすることで破滅的忘却が生じると推定している．
+この上書きの大きさと方向を最も直接に捉える量は，学習前後の重み差分 $\Delta W = W_{\mathrm{after}} - W_{\mathrm{before}}$ である．
+ここで関心があるのは $\Delta W$ の大きさだけではなく，それが少数の方向に集中しているか（低ランク性），そしてその方向が過去ドメインや COCO の表現にとって重要な方向と重なるか，である．
+本節ではまず前者の低ランク性を測る．
+低ランク性が成立すれば，過去部分空間との直交化（InfLoRA 型 \cite{inflora}）が少数の制約で干渉の大部分を除去できるという前提が支持される \cite{intrinsicdim}．
+
+定式化について述べる．
+ある線形層（または畳み込みを行列化した重み）について $\Delta W \in \mathbb{R}^{m \times n}$ を考え，特異値分解
+\begin{equation}
+\Delta W = U \Sigma V^{\top}, \quad \Sigma = \mathrm{diag}(\sigma_1, \ldots, \sigma_p), \quad \sigma_1 \geq \cdots \geq \sigma_p \geq 0, \quad p = \min(m,n)
+\end{equation}
+を行う．
+上位 $r$ エネルギー比を
+\begin{equation}
+E(r) = \frac{\sum_{i=1}^{r} \sigma_i^2}{\sum_{i=1}^{p} \sigma_i^2}
+\end{equation}
+で定義する．
+$E(r)$ が小さな $r$ で $1$ に近づくほど $\Delta W$ は低ランクである．
+スペクトルの一様性を表す実効ランクを，正規化特異値 $\bar{\sigma}_i = \sigma_i / \sum_j \sigma_j$ のシャノンエントロピーから
+\begin{equation}
+r_{\mathrm{eff}}(\Delta W) = \exp\!\left( - \sum_{i=1}^{p} \bar{\sigma}_i \log \bar{\sigma}_i \right)
+\end{equation}
+と定義する \cite{intrinsicdim}．
+$r_{\mathrm{eff}}$ は $\Delta W$ が実質的に張る次元数の連続的な指標であり，$1$ に近ければ単一方向への集中，$p$ に近ければ等方的な変化を意味する．
+安定ランク $\|\Delta W\|_F^2 / \|\Delta W\|_2^2 = \sum_i \sigma_i^2 / \sigma_1^2$ も補助指標として併用する．
+
+MM-Grounding DINO での計算手順について述べる．
+必要なチェックポイントは base（事前学習）と各ドメイン単独 FT，および aerial $\rightarrow$ D2 の逐次 FT である．
+単独 FT については $\Delta W = W_{\mathrm{domain}} - W_{\mathrm{base}}$，逐次 FT については $\Delta W = W_{\mathrm{after\text{-}D2}} - W_{\mathrm{after\text{-}aerial}}$ を層ごとに計算する．
+再学習は不要であり，\verb|torch.load| で state\_dict を読み，対応キーの差分をとって \verb|torch.linalg.svd| を適用するだけでよい．
+対象とすべき層は共有検出経路の線形写像であり，具体的には decoder の各 self/cross attention の $W_q, W_k, W_v, W_o$ と FFN の二つの線形層，encoder（deformable）の同等の線形写像，言語側 cross-modal の射影，bbox\_head の回帰 FFN，および対照ヘッドのテキスト・視覚射影である．
+畳み込み層は $\mathrm{out} \times (\mathrm{in} \cdot k_h \cdot k_w)$ に reshape してから SVD する．
+層ごとに $E(r)$ 曲線，$r_{\mathrm{eff}}$，$\|\Delta W\|_F$ を表にまとめる．
+
+支持できる主張・設計判断について述べる．
+多くの層で $E(8)$ や $E(16)$ が $0.9$ を超え $r_{\mathrm{eff}}$ が層次元に比べ十分小さければ，ドメイン適応に伴う重み更新が本質的に低ランクであるという InfLoRA の第一前提が実証される．
+このとき LoRA 系のランク $r$ の設定指針（どの層で大きな $r$ が要るか）が定量的に得られる．
+逆に特定の層（たとえば言語射影や対照ヘッド）だけ $r_{\mathrm{eff}}$ が大きい場合，その層は低ランク仮定が弱く，別の正則化が要ることを示唆する．
+
+長所短所／caveat について述べる．
+本解析は順伝播も逆伝播も不要で計算が極めて軽く，最初に行うべき診断である．
+一方で $\Delta W$ の低ランク性は更新の集中度を示すだけで，その方向が過去にとって有害かは語らない（それは第\ref{subsec:subspace-overlap}節以降が担う）．
+また検出 Transformer のクエリヘッドや対照ヘッドへの転移は仮説であり，これらヘッドは入出力次元が小さくランク解析の統計的安定性が低い点に注意する．
+BatchNorm や LayerNorm の affine 係数，bias は行列ではないため本解析の対象外とし，別途ノルム変化で扱う．
+
+
+\subsection{部分空間の重なり定量化（主角度・射影エネルギー・GPM）}
+\label{subsec:subspace-overlap}
+
+何を測るか／動機について述べる．
+忘却の機序が「過去にとって重要な方向の上書き」であるなら，測るべきは更新方向 $\Delta W$ が張る部分空間と，過去ドメインや COCO が使う部分空間との重なりである．
+重なりが大きいほど干渉が大きく，重なりが小さければ更新は過去に対して概ね直交的であり忘却は小さいはずである．
+本節は重み側の部分空間（$\Delta W$ の主特異方向）と活性化側の部分空間（GPM 流 \cite{gpm}）の二つを定量化し，両者を主角度で結ぶ．
+
+定式化について述べる．
+二つの部分空間 $\mathcal{A} = \mathrm{span}(A)$，$\mathcal{B} = \mathrm{span}(B)$（$A \in \mathbb{R}^{d \times a}$，$B \in \mathbb{R}^{d \times b}$ は正規直交基底）の主角度 $0 \leq \theta_1 \leq \cdots \leq \theta_k \leq \pi/2$（$k = \min(a,b)$）は，$A^{\top} B$ の特異値 $\cos\theta_i$ から
+\begin{equation}
+A^{\top} B = \tilde{U} \, \mathrm{diag}(\cos\theta_1, \ldots, \cos\theta_k) \, \tilde{V}^{\top}
+\end{equation}
+で与えられる \cite{gpm}．
+$\cos\theta_i = 1$（$\theta_i = 0$）は共有方向，$\cos\theta_i = 0$（$\theta_i = \pi/2$）は直交方向を表す．
+全体の重なりはグラスマン射影距離やエネルギーで要約し，部分空間 $\mathcal{B}$ への射影エネルギー比を
+\begin{equation}
+\rho(\mathcal{A} \rightarrow \mathcal{B}) = \frac{\| P_{\mathcal{B}} A \|_F^2}{\| A \|_F^2} = \frac{1}{a}\sum_{i=1}^{k} \cos^2 \theta_i, \quad P_{\mathcal{B}} = B B^{\top}
+\end{equation}
+と定義する．
+$\rho \in [0,1]$ で，$0$ なら完全直交，$1$ なら $\mathcal{A} \subseteq \mathcal{B}$ である．
+活性化側の部分空間 GPM は，過去タスクの入力に対する各層の入力特徴行列 $X \in \mathbb{R}^{d \times N}$（$N$ サンプル）を集め，相関 $X X^{\top}$ の SVD 上位方向で張る \cite{gpm}．
+保持エネルギー閾値 $\epsilon_{\mathrm{th}}$（たとえば $0.97$）に対し
+\begin{equation}
+\min \left\{ r : \frac{\sum_{i=1}^{r} \sigma_i^2}{\sum_{i} \sigma_i^2} \geq \epsilon_{\mathrm{th}} \right\}
+\end{equation}
+で部分空間次元を決める．
+
+MM-Grounding DINO での計算手順について述べる．
+重み側は第\ref{subsec:deltaw-lowrank}節の SVD から，現ドメインの $\Delta W$ の上位 $r$ 左特異ベクトル（出力側）または右特異ベクトル（入力側）を基底 $A$ とし，これと過去ドメインの $\Delta W$ 部分空間 $B$ との主角度を計算する．
+これはチェックポイント差分のみで実行でき，順伝播は不要である．
+活性化側 GPM については過去ドメイン（および分析 E では COCO，第\ref{subsec:integrated-design}節）の valid 画像を base または過去 FT モデルに順伝播し，対象層の入力活性化を forward hook で収集する．
+hook は対象の各線形層・attention 射影の入力（cross attention ではクエリ・キー・バリュー各々の入力）に登録し，$N$ をおよそ数千トークン規模に抑えるためバッチごとにランダムサンプリングして $X X^{\top}$ を逐次加算する（全活性化を保持しない）．
+得た GPM 基底 $B$ に対し現ドメイン更新の入力側基底 $A$ との射影エネルギー $\rho$ と主角度分布を層別に表にする．
+
+支持できる主張・設計判断について述べる．
+過去 GPM への射影エネルギー $\rho$ が高い層ほど干渉が強く忘却寄与が大きいという仮説を検証できる．
+$\rho$ が高い層に直交化制約を集中させればよいという InfLoRA 第二・第三前提（部分空間干渉が忘却源であり，直交化で干渉を除去できる）が支持される．
+逐次 FT で実際に忘却が大きかった層と $\rho$ が高い層が一致すれば，機序仮説の強い証拠となる．
+
+長所短所／caveat について述べる．
+活性化 GPM は入力分布に依存するため，COCO と各ドメインで入力統計が大きく異なる検出器では基底が分布シフトを反映してしまう．
+これは利点（実際に使う方向を測れる）でもあり欠点（純粋な重み幾何と混ざる）でもある．
+attention は非線形に方向を混ぜるため，線形射影への直交化が attention 全体の干渉除去を保証しない点は仮説として扱う．
+主角度は基底のランク選択 $r, \epsilon_{\mathrm{th}}$ に敏感なので，複数の閾値で頑健性を確認する．
+
+
+\subsection{勾配ベース干渉（NTK重なり・勾配コサイン・Fisher情報）}
+\label{subsec:gradient-interference}
+
+何を測るか／動機について述べる．
+部分空間の幾何（第\ref{subsec:subspace-overlap}節）は静的な重なりを測るが，最適化が実際に過去損失をどれだけ悪化させるかは勾配の相互作用で決まる．
+新ドメインの更新ステップ $-\eta \nabla_\theta L_{\mathrm{new}}$ が過去損失 $L_{\mathrm{old}}$ を一次で増加させる量は $\langle \nabla L_{\mathrm{new}}, \nabla L_{\mathrm{old}} \rangle$ の符号と大きさで決まる．
+本節はこの勾配干渉を，方向（コサイン・衝突率 \cite{pcgrad}），関数空間の連動（NTK 重なり \cite{ntkoverlap}），パラメタ重要度（Fisher \cite{ewc}）の三つで測る．
+
+定式化について述べる．
+タスク（ドメイン）$a, b$ の勾配を $g_a = \nabla_\theta L_a$，$g_b = \nabla_\theta L_b$ とする．
+勾配コサイン類似度は
+\begin{equation}
+\cos(g_a, g_b) = \frac{\langle g_a, g_b \rangle}{\| g_a \| \, \| g_b \|}
+\end{equation}
+で，負なら干渉（一方の改善が他方を悪化）を表す \cite{pcgrad}．
+衝突率はサンプル対やミニバッチ対で $\cos < 0$ となる割合とする．
+関数空間の連動は経験 NTK
+\begin{equation}
+\Theta(x, x') = \nabla_\theta f(x)^{\top} \nabla_\theta f(x')
+\end{equation}
+を用い，タスク間の NTK 重なりを，ドメイン $a$ の入力集合 $\mathcal{X}_a$ と $b$ の $\mathcal{X}_b$ にわたるグラム行列のフロベニウス整列
+\begin{equation}
+\mathrm{NTKoverlap}(a,b) = \frac{\langle \Theta_{aa}, \Theta_{bb} \rangle_F}{\| \Theta_{aa} \|_F \, \| \Theta_{bb} \|_F}, \quad (\Theta_{aa})_{ij} = \nabla_\theta f(x_i)^{\top}\nabla_\theta f(x_j), \; x_i, x_j \in \mathcal{X}_a
+\end{equation}
+あるいは交差ブロック $\Theta_{ab}$ のエネルギーで測る \cite{ntkoverlap}．
+パラメタ重要度は対角 Fisher
+\begin{equation}
+F_{jj} = \mathbb{E}_{x \sim \mathcal{D}_a} \, \mathbb{E}_{y \sim p_\theta(y \mid x)} \left[ \left( \frac{\partial \log p_\theta(y \mid x)}{\partial \theta_j} \right)^2 \right]
+\end{equation}
+で近似し，過去 Fisher で重み付けした更新量 $\sum_j F_{jj}\, (\Delta\theta_j)^2$ が過去損失の二次増加の代理となる \cite{ewc}．
+
+MM-Grounding DINO での計算手順について述べる．
+勾配は逆伝播のみで再学習を伴わない．
+各ドメインの valid（または train の小バッチ）を対象モデル（base もしくは比較したい FT）に通し，検出損失（分類・対照損失と bbox 回帰損失）の勾配をパラメタごとに取得する．
+層別に勾配ベクトルを連結し $\cos(g_a, g_b)$ と衝突率を，base 上で全ドメイン対について計算する．
+NTK は全パラメタでは大きいので，$f$ をクエリの対照ロジットや bbox 出力など低次元の出力に限定し，少数サンプルの Jacobian を \verb|torch.autograd.functional.jacobian| または vmap-grad で取り，前述のグラム整列を計算する．
+Fisher は各ドメインの valid でモデル出力からサンプルしたラベルに対する対数尤度勾配の二乗を平均して対角近似する．
+過去ドメイン Fisher と逐次 FT の $\Delta\theta$ を掛けた $\sum_j F_{jj}(\Delta\theta_j)^2$ を層別に集計する．
+
+支持できる主張・設計判断について述べる．
+ドメイン間で勾配コサインが負・NTK 重なりが大きい層が，逐次 FT の忘却が大きい層と一致すれば，干渉が機序であることを関数空間レベルで裏づけられる．
+Fisher 重み付き $\Delta\theta$ が大きい層は EWC 型の罰則や直交化を優先すべき層であり，InfLoRA の対象層選択の指針になる．
+NTK 重なりが小さいドメイン対は干渉が本質的に小さく，制約を緩めてよい．
+
+長所短所／caveat について述べる．
+勾配・Fisher はサンプルとバッチ統計に依存し分散が大きいので十分なサンプルで平均する．
+対角 Fisher はパラメタ間相関を無視し，attention のような結合の強い層では過小評価しうる．
+経験 NTK は出力選択に依存し，検出ヘッドの多出力（分類・回帰・クエリ）をどう束ねるかで結果が変わるため出力定義を明記する．
+対照／クエリヘッドの勾配が他ヘッドへ転移する効果は仮説であり，ヘッド分離で別々に観察する．
+
+
+\subsection{表現類似度（CKA・SVCCA）による層別ドリフト測定}
+\label{subsec:representation-similarity}
+
+何を測るか／動機について述べる．
+重みや勾配が変化しても，関数として見た表現が保たれていれば忘却は軽い．
+逆に表現が大きくドリフトしていれば，たとえ最終損失が回復しても過去知識は失われている可能性が高い．
+本節は同一入力に対する二つのモデル（または同一モデルの学習前後）の層表現の類似度を CKA \cite{cka_kornblith2019} と SVCCA \cite{svcca_raghu2017} で測り，どの層でドリフトが大きいかを特定する．
+
+定式化について述べる．
+$n$ サンプルに対する二つの表現行列 $X \in \mathbb{R}^{n \times p_1}$，$Y \in \mathbb{R}^{n \times p_2}$（行がサンプル，列が特徴）を列方向に中心化する．
+線形 CKA は HSIC の正規化で
+\begin{equation}
+\mathrm{CKA}(X, Y) = \frac{\mathrm{HSIC}(K, L)}{\sqrt{\mathrm{HSIC}(K, K)\,\mathrm{HSIC}(L, L)}}, \quad K = X X^{\top}, \; L = Y Y^{\top}
+\end{equation}
+と定義され，経験 HSIC は中心化行列 $H = I_n - \tfrac{1}{n}\mathbf{1}\mathbf{1}^{\top}$ を用いて
+\begin{equation}
+\mathrm{HSIC}(K, L) = \frac{1}{(n-1)^2}\,\mathrm{tr}(K H L H)
+\end{equation}
+で計算する \cite{cka_kornblith2019}．
+線形 CKA は $\mathrm{CKA} = \| Y^{\top} X \|_F^2 / (\| X^{\top} X \|_F \, \| Y^{\top} Y \|_F)$ とも書け，特徴次元の直交変換に不変である．
+RBF カーネルでは $K_{ij} = \exp(-\| x_i - x_j \|^2 / (2 s^2))$ を用い，バンド幅 $s$ を距離中央値で定める．
+SVCCA は各表現に SVD を適用して累積分散が $99\%$ となる上位特異方向に射影し，得た部分空間に正準相関分析を施して正準相関係数 $\{\rho_i\}$ を求め，その平均
+\begin{equation}
+\bar{\rho}_{\mathrm{SVCCA}} = \frac{1}{k}\sum_{i=1}^{k} \rho_i
+\end{equation}
+を類似度とする \cite{svcca_raghu2017}．
+ドリフトは $1 - \mathrm{CKA}$ あるいは $1 - \bar{\rho}_{\mathrm{SVCCA}}$ で表す．
+
+MM-Grounding DINO での計算手順について述べる．
+比較対象は（i）過去ドメインの valid 入力に対する base 表現と逐次 FT 後表現，（ii）COCO（分析 E）入力に対する同様の対である．
+forward hook を backbone（Swin の各ステージ出力），neck（FPN 各レベル），encoder 各層出力，decoder 各層のクエリ表現，および対照ヘッド直前の視覚・テキスト特徴に登録する．
+検出器は空間トークンが多いので，CKA のサンプル軸 $n$ は画像ごとに代表トークン（たとえば前景クエリやプーリング特徴）に縮約するか，画像数 $\times$ トークン数を数千程度にサブサンプルして $K, L$ のサイズを抑える（ミニバッチ CKA の不偏推定を用いると安定する）．
+層ごとに CKA と SVCCA を計算しドリフト曲線を表にする．
+
+支持できる主張・設計判断について述べる．
+過去入力に対する表現ドリフトが大きい層と，第\ref{subsec:subspace-overlap}・\ref{subsec:gradient-interference}節で干渉が大きいと特定された層が一致すれば，干渉が実際に表現の劣化として現れることを示せる．
+ドリフトが深層（decoder 後段・対照ヘッド）に集中するなら，浅層は共有のまま深層に直交化や凍結を集中させる設計が正当化される（第\ref{subsec:tunnel}節の tunnel 仮説とも接続する）．
+
+長所短所／caveat について述べる．
+CKA はサンプル数と中心化に敏感で，少数サンプルや外れ値で過大評価が起こるため不偏推定とサブサンプリングの分散報告を行う．
+SVCCA は $99\%$ 分散の閾値とサンプル数 $>$ 次元の条件に依存し，高次元層では次元削減が必要．
+表現類似度が高くても下流の検出性能が保たれる保証はなく，最終的には性能（mAP）と突き合わせる．
+
+
+\subsection{線形プローブによる表現忘却}
+\label{subsec:linear-probe}
+
+何を測るか／動機について述べる．
+最終的な検出 mAP の低下は，表現自体の劣化と，ヘッド／読み出しの劣化の二つが混ざる．
+表現忘却（representation forgetting）は，凍結した中間表現の上に新たな線形分類器（プローブ）を学習し，その精度で「特徴がまだ過去タスクを解ける情報を保っているか」だけを測る \cite{probingrf}．
+これにより忘却が表現に起因するのかヘッドに起因するのかを分離できる．
+
+定式化について述べる．
+凍結特徴抽出器 $\phi_\theta$ が与える特徴 $z = \phi_\theta(x)$ の上に線形分類器 $W$ を学習し，過去タスク $a$ のプローブ精度
+\begin{equation}
+\mathrm{Probe}_a(\theta) = \max_{W}\; \mathrm{Acc}_a\!\left( W^{\top} \phi_\theta(x) \right)
+\end{equation}
+を定義する．
+表現忘却は学習前後のプローブ精度差
+\begin{equation}
+\mathrm{RF}_a = \mathrm{Probe}_a(\theta_{\mathrm{base}}) - \mathrm{Probe}_a(\theta_{\mathrm{after}})
+\end{equation}
+で測る \cite{probingrf}．
+$\mathrm{RF}_a$ が小さければ表現は保たれており，最終性能低下は主にヘッド側に帰せられる．
+
+MM-Grounding DINO での計算手順について述べる．
+検出は分類器単体では完結しないため，二つの読み出しを用いる．
+第一に，過去ドメイン正解ボックスから RoIAlign 等で領域特徴を取り（あるいは GT 中心の decoder クエリ特徴を取り），そのクラスを当てる線形分類器を学習する領域分類プローブである．
+第二に，より検出に近い代理として，base の検出ヘッドのうち回帰・マッチング部を凍結し，対照／分類の線形読み出しだけを過去ドメインで再学習して mAP を測る．
+いずれも特徴抽出側 $\phi_\theta$（backbone から指定層まで）を凍結し，読み出しのみを少数エポックで学習する（バックボーン勾配なしなので軽い）．
+$\theta_{\mathrm{base}}$，$\theta_{\mathrm{domain\text{-}FT}}$，$\theta_{\mathrm{after\text{-}D2}}$ の三点で $\mathrm{Probe}_a$ を測り $\mathrm{RF}_a$ を表にする．
+凍結点を浅層・中層・深層と変えて層別の表現忘却プロファイルも得る．
+
+支持できる主張・設計判断について述べる．
+逐次 FT で mAP は落ちたが $\mathrm{RF}_a$ が小さい層が存在すれば，その層までの表現は再利用可能で，軽量な読み出し再学習やヘッド側保護で忘却を回復できることを示せる．
+逆に深層で $\mathrm{RF}_a$ が大きいなら表現自体が壊れており，重みレベルの直交化（InfLoRA）が必要だという判断を支える．
+
+長所短所／caveat について述べる．
+プローブは学習を伴うが対象は線形読み出しのみで，バックボーン凍結のため計算は軽い．
+検出特有の課題（位置回帰・集合マッチング・テキスト条件付け）を線形プローブは完全には捉えず，分類精度の保存が検出性能の保存を意味しない点に注意する．
+領域特徴の取り方（GT 利用か予測利用か）で結果が変わるため定義を固定する．
+対照ヘッドはテキスト埋め込みに依存するので，プローブのクラス語彙を過去ドメインに固定する．
+
+
+\subsection{Tunnel Effect による層別解析}
+\label{subsec:tunnel}
+
+何を測るか／動機について述べる．
+深いネットワークは，前半の汎用特徴を作る extractor と，後半のタスク特化的に表現を圧縮する tunnel に分かれることが報告されている \cite{tunnel}．
+tunnel は in-distribution 性能には寄与するが OOD 一般化や転移を損ない，かつ継続学習では忘却を集中的に被る部分でもある．
+本節は MM-Grounding DINO の共有検出経路に extractor／tunnel 境界が存在するかを層別プローブで特定し，どこを保護・直交化すべきかの層選択を導く．
+
+定式化について述べる．
+各層 $\ell$ の表現に対する線形プローブ精度 $\mathrm{Probe}^{(\ell)}$ を用い，in-distribution（学習ドメイン）と OOD（別ドメイン／COCO）で
+\begin{equation}
+g_{\mathrm{ID}}(\ell) = \mathrm{Probe}^{(\ell)}_{\mathrm{ID}}, \qquad g_{\mathrm{OOD}}(\ell) = \mathrm{Probe}^{(\ell)}_{\mathrm{OOD}}
+\end{equation}
+を測る．
+tunnel は $g_{\mathrm{ID}}(\ell)$ が飽和したまま $g_{\mathrm{OOD}}(\ell)$ が層とともに低下する区間として定義され，OOD 性能の層間低下
+\begin{equation}
+\delta_{\mathrm{OOD}}(\ell) = g_{\mathrm{OOD}}(\ell) - g_{\mathrm{OOD}}(\ell-1) < 0
+\end{equation}
+が継続する区間が tunnel に対応する \cite{tunnel}．
+層別実効ランク $r_{\mathrm{eff}}$（第\ref{subsec:deltaw-lowrank}節）の急減も tunnel の特徴量として併用する．
+
+MM-Grounding DINO での計算手順について述べる．
+第\ref{subsec:linear-probe}節の線形プローブを backbone・neck・encoder・decoder の各層に適用し，ID（その層を作ったドメイン）と OOD（他ドメインおよび COCO）でプローブ精度を測る．
+あわせて各層の活性化の実効ランクと CKA ドリフト（第\ref{subsec:representation-similarity}節）を重ねて，extractor／tunnel 境界を推定する．
+forward hook は層出力に登録し，再学習はプローブの線形層のみである．
+
+支持できる主張・設計判断について述べる．
+tunnel に当たる層で OOD プローブが落ち，同じ層で逐次 FT の忘却・干渉・ドリフトが大きいなら，忘却が tunnel に局在するという機序が支持される．
+この場合，extractor は共有して tunnel に直交化／低ランク適応を集中させる設計が正当化され，InfLoRA の対象層を tunnel に絞る根拠になる．
+
+長所短所／caveat について述べる．
+tunnel 効果は分類 CNN／ViT で示された現象であり，検出 Transformer のクエリ駆動デコーダや対照ヘッドにそのまま当てはまるかは仮説である．
+decoder のクエリは層を経るほど物体特化するため，tunnel と検出特化を区別する必要がある．
+境界推定はプローブ設定に依存するので複数の読み出し定義で確認する．
+
+
+\subsection{損失地形の解析（sharpness／flatness・mode connectivity）}
+\label{subsec:loss-landscape}
+
+何を測るか／動機について述べる．
+平坦な極小値は摂動に頑健で，継続学習では後続タスクの更新による過去損失の悪化（忘却）が小さいと期待される \cite{cflat}．
+また二つの解の間に低損失の経路が存在するか（mode connectivity）は，逐次 FT の解が過去解からどれだけ「壁」を越えたかを測り，干渉の幾何を補完する \cite{lmc}．
+本節は鋭さ（sharpness）と補間バリアで損失地形を特徴づける．
+
+定式化について述べる．
+鋭さは SAM \cite{sam_foret2021} の定義に倣い，半径 $\rho$ の近傍での損失最大増加
+\begin{equation}
+S_\rho(\theta) = \max_{\|\epsilon\|_2 \leq \rho}\; L(\theta + \epsilon) - L(\theta)
+\end{equation}
+で測り，一次近似の最悪方向は $\hat{\epsilon} = \rho\, \nabla L(\theta) / \| \nabla L(\theta) \|_2$ で与えられる．
+等方的な鋭さの代理としてヘッシアン最大固有値 $\lambda_{\max}(\nabla^2 L)$ やトレース $\mathrm{tr}(\nabla^2 L)$ も用い，これらは Hutchinson 推定や power iteration で前後伝播のみから近似できる．
+mode connectivity は二解 $\theta_a, \theta_b$ の線形補間 $\theta(\alpha) = (1-\alpha)\theta_a + \alpha\theta_b$ に沿った損失から，バリア
+\begin{equation}
+B(\theta_a, \theta_b) = \max_{\alpha \in [0,1]} L(\theta(\alpha)) - \big[(1-\alpha) L(\theta_a) + \alpha L(\theta_b)\big]
+\end{equation}
+で測る \cite{lmc}．
+C-Flat \cite{cflat} は継続学習向けに，過去損失も平坦化する目的で鋭さを正則化する枠組みであり，本節の sharpness 指標はその前提（平坦さと忘却の相関）の検証に対応する．
+
+MM-Grounding DINO での計算手順について述べる．
+鋭さは過去ドメイン損失について計算する．
+$\hat{\epsilon}$ を勾配から作り $\theta + \hat{\epsilon}$ で再評価して $S_\rho$ を得る（順伝播二回，逆伝播一回，再学習なし）．
+ヘッシアン最大固有値・トレースは Hessian-vector 積（二重逆伝播）の power iteration／Hutchinson で推定する．
+mode connectivity は base と逐次 FT，または異なるドメイン単独 FT の対について，補間係数 $\alpha$ を $0$ から $1$ まで刻んで過去ドメイン損失と mAP を評価しバリア $B$ を測る．
+鋭さ・バリアを共有経路全体およびブロック単位（decoder のみ補間など）で算出する．
+
+支持できる主張・設計判断について述べる．
+過去損失についての鋭さが大きい解ほど逐次 FT 後の忘却が大きいという相関が確認できれば，平坦化（SAM／C-Flat）を併用する設計が正当化される．
+ドメイン解間の補間バリアが高ければ解は別盆地にあり，単純な重み平均では統合できず直交化や部分空間制約が必要だと判断できる．
+
+長所短所／caveat について述べる．
+ヘッシアン推定は計算がやや重く（HVP の反復），鋭さは $\rho$ や正規化（パラメタスケール不変でない）に依存する点に注意する．
+線形 mode connectivity は順序・初期化に敏感で，置換対称性を考慮しないと過大なバリアを示しうる．
+鋭さと忘却の因果ではなく相関を測る点，検出損失は分類・回帰・対照の合成で地形が複雑な点に留意する．
+
+
+\subsection{忘却のモジュール局在化（層別巻き戻し・task vector 否定）}
+\label{subsec:localization}
+
+何を測るか／動機について述べる．
+これまでの相関的指標（干渉・ドリフト・鋭さ）が示す「忘却が大きい層」が，本当に忘却の原因なのかを因果的に確かめたい．
+そのために，逐次 FT 後のモデルの一部の層だけを過去状態に巻き戻したり，新ドメインの task vector を否定的に適用したりして，過去性能がどれだけ回復するかを測る制御忘却（controlled forgetting）の手法を用いる．
+
+定式化について述べる．
+層集合 $\mathcal{S}$ を base へ巻き戻したモデル
+\begin{equation}
+\theta^{\mathrm{rb}}_{\mathcal{S}} = \theta_{\mathrm{after}} \odot (1 - m_{\mathcal{S}}) + \theta_{\mathrm{base}} \odot m_{\mathcal{S}}
+\end{equation}
+（$m_{\mathcal{S}}$ は層集合 $\mathcal{S}$ の指示マスク）を作り，過去 mAP の回復量 $\mathrm{Recover}(\mathcal{S}) = \mathrm{mAP}_a(\theta^{\mathrm{rb}}_{\mathcal{S}}) - \mathrm{mAP}_a(\theta_{\mathrm{after}})$ を測る．
+task vector \cite{taskarith} を $\tau = \theta_{\mathrm{after}} - \theta_{\mathrm{base}}$ と定義し，係数 $\beta \geq 0$ による否定
+\begin{equation}
+\theta(\beta) = \theta_{\mathrm{after}} - \beta\, \tau
+\end{equation}
+で新ドメイン適応を段階的に取り消し，過去 mAP と新 mAP のトレードオフ曲線を描く．
+$\beta = 1$ で base に戻る．
+
+MM-Grounding DINO での計算手順について述べる．
+チェックポイントの算術のみで再学習は不要である．
+逐次 FT（aerial $\rightarrow$ D2）の $\theta_{\mathrm{after}}$ と base，および中間の aerial FT を用い，巻き戻し対象 $\mathcal{S}$ を backbone／neck／encoder／decoder／各 head と段階的に変え，過去ドメイン（aerial, COCO）と新ドメイン（D2）の mAP を評価する．
+task vector 否定は $\beta$ を $0$ から $1$ まで掃き，両 mAP を記録する．
+モジュール別の task vector（decoder のみ否定など）も作れる．
+
+支持できる主張・設計判断について述べる．
+特定モジュールの巻き戻しで過去 mAP が大きく回復し，かつ新 mAP の劣化が小さければ，そのモジュールが忘却の主因であると因果的に特定でき，相関指標（第\ref{subsec:subspace-overlap}〜\ref{subsec:loss-landscape}節）の結論を裏づける．
+これは直交化や凍結を適用すべきモジュールを直接指定し，InfLoRA の適用箇所を最小化する設計判断を与える．
+
+長所短所／caveat について述べる．
+層を巻き戻すと前後の層との整合が崩れて性能が非単調に振る舞いうるため，巻き戻しは粗いモジュール単位から始める．
+task vector の線形性（否定で適応が綺麗に消える）は仮定であり，対照ヘッドや言語側の非線形依存では成り立たない場合がある．
+本手法は因果に近いが介入は局所的で，複数モジュールの相互作用（交絡）は単独巻き戻しでは捉えにくい．
+
+
+\subsection{統合：InfLoRA の3前提への対応づけと分析設計}
+\label{subsec:integrated-design}
+
+何を測るか／動機について述べる．
+本章の各手法を，検証したい中心仮説，すなわち InfLoRA 型アプローチ（過去／COCO の部分空間と直交化する低ランク適応）がなぜ効くか，の三前提に対応づけて整理する \cite{inflora}．
+三前提とは，（P1）ドメイン適応の重み更新が低ランクであること，（P2）忘却が過去部分空間との干渉に由来すること，（P3）更新を過去部分空間に直交化すれば干渉を除去でき忘却を抑えられること，である．
+関連して，勾配を過去勾配空間に直交射影する OGD \cite{ogd}・GPM \cite{gpm}・NSGP \cite{nsgp}・Adam-NSCL \cite{adamnscl} は P3 の最適化的実現であり，本章の活性化部分空間解析が共通の前提を支える．
+
+各前提への対応づけを述べる．
+P1 は第\ref{subsec:deltaw-lowrank}節の $\Delta W$ の SVD（$E(r)$，$r_{\mathrm{eff}}$）が直接検証する．
+P2 は第\ref{subsec:subspace-overlap}節（主角度・射影エネルギー・GPM），第\ref{subsec:gradient-interference}節（勾配コサイン・NTK 重なり・Fisher），第\ref{subsec:representation-similarity}節（CKA／SVCCA ドリフト）が相関的に，第\ref{subsec:localization}節（巻き戻し・task vector 否定）が因果的に支える．
+P3 は，過去部分空間への射影エネルギー $\rho$ が高い層で忘却が大きいという P2 の結果が成り立つとき，その方向を除けば干渉が減るという含意として導かれ，さらに第\ref{subsec:loss-landscape}節の平坦さ・バリアが直交解の頑健性を補強する．
+層選択は第\ref{subsec:linear-probe}・\ref{subsec:tunnel}節（表現忘却と tunnel）が与える．
+
+分析 E（COCO を task-0 に含める分析）を述べる．
+事前学習 VLM の汎用知識の忘却を測るには，COCO を継続列の task-0 とみなし，すべての部分空間・干渉・ドリフト・プローブ解析に COCO を過去タスクとして加える．
+具体的には，COCO valid を入力とした活性化 GPM 基底 $B_{\mathrm{COCO}}$ への現ドメイン更新の射影エネルギー（第\ref{subsec:subspace-overlap}節），COCO 損失に対する勾配干渉と Fisher（第\ref{subsec:gradient-interference}節），COCO 入力の CKA ドリフトと線形プローブ忘却（第\ref{subsec:representation-similarity}・\ref{subsec:linear-probe}節），COCO mAP に対する task vector 否定曲線（第\ref{subsec:localization}節）を測る．
+これにより，ドメイン適応が汎用 COCO 部分空間を上書きしているか（P2 の COCO 版）と，COCO 部分空間への直交化が有効かの前提（P3 の COCO 版）を実証する．
+
+推奨実施順とコスト別優先を述べる．
+再学習不要・線形代数のみで軽い解析を先に行い，逆伝播・プローブ学習を要するものを後に回す．
+具体的な優先順位と必要資産・コストを表\ref{tab:analysis-priority}に示す．
+
+\begin{table}[t]
+\centering
+\caption{忘却機序分析の推奨実施順とコスト別優先}
+\label{tab:analysis-priority}
+\begin{tabularx}{\linewidth}{c l X c c}
+\hline
+順 & 分析（節） & 検証する前提・必要資産 & 計算コスト & 優先 \\
+\hline
+1 & $\Delta W$ 低ランク解析（\ref{subsec:deltaw-lowrank}） & P1／ckpt 差分のみ，順逆伝播不要 & 低 & 最優先 \\
+2 & 重み部分空間の主角度（\ref{subsec:subspace-overlap}前半） & P2／ckpt 差分の SVD のみ & 低 & 最優先 \\
+3 & task vector 否定・層巻き戻し（\ref{subsec:localization}） & P2因果／ckpt 算術＋評価のみ & 低〜中 & 高 \\
+4 & 勾配コサイン・Fisher（\ref{subsec:gradient-interference}） & P2／逆伝播のみ，再学習なし & 中 & 高 \\
+5 & 活性化 GPM・射影エネルギー（\ref{subsec:subspace-overlap}後半） & P2・P3／順伝播＋hook & 中 & 高 \\
+6 & CKA／SVCCA ドリフト（\ref{subsec:representation-similarity}） & P2／順伝播＋hook & 中 & 中 \\
+7 & 線形プローブ忘却・tunnel（\ref{subsec:linear-probe}・\ref{subsec:tunnel}） & P2・層選択／プローブ線形層のみ学習 & 中〜高 & 中 \\
+8 & NTK 重なり（\ref{subsec:gradient-interference}） & P2／Jacobian，低次元出力に限定 & 高 & 中 \\
+9 & sharpness・mode connectivity（\ref{subsec:loss-landscape}） & P3補強／HVP・補間評価 & 高 & 低〜中 \\
+10 & 分析 E：COCO を task-0 に（\ref{subsec:integrated-design}） & P2・P3のCOCO版／上記を COCO で再実行 & 中〜高 & 高 \\
+\hline
+\end{tabularx}
+\end{table}
+
+支持できる主張・設計判断について述べる．
+表\ref{tab:analysis-priority}の順 1〜3 だけでも，低ランク性（P1）と干渉の因果（P2）について再学習なしで強い証拠が得られ，InfLoRA を採用する妥当性とその対象層を早期に判断できる．
+順 4〜6 が干渉を関数・表現レベルで裏づけ，順 7〜9 が層選択と直交解の頑健性を補強し，順 10 が事前学習知識（COCO）への一般化を確認する．
+
+長所短所／caveat について述べる．
+各指標は相関であり，因果は主に第\ref{subsec:localization}節の介入で担保される点を常に意識する．
+複数指標が同じ層を「忘却源」と指す収束的証拠（triangulation）を重視し，単一指標の結論は避ける．
+検出 Transformer・対照／クエリヘッドへの諸現象（tunnel，task vector 線形性，直交化の attention への波及）の転移は本章を通じて仮説であり，分析 E と層巻き戻しによる因果検証で補強する方針とする．
+

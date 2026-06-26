@@ -1,0 +1,159 @@
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% 既存研究サーベイ（網羅版）
+% 事前学習VLM検出器のドメイン増加型継続学習
+% MPRG Work Document Template ベース
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\RequirePackage[l2tabu, orthodox]{nag}
+\documentclass[11pt, a4j]{jarticle}
+\usepackage{mprg}
+\usepackage{datetime}
+\usepackage{ascmac}
+
+\begin{document}
+
+\title{事前学習済み Vision-Language Model 検出器の\\
+ドメイン増加型継続学習に関する既存研究サーベイ（網羅版）}
+\author{TP26801 今井　孝洋}
+\date{2026年6月22日}
+\maketitle
+\pagestyle{fancy}
+
+%==================================================================
+\section{はじめに：研究設定と課題}
+本稿は，事前学習済み Vision-Language Model（VLM）検出器
+（MM-Grounding DINO~\cite{mmgdino}）を対象とした
+ドメインが増加する物体検出の継続学習（domain-incremental continual learning; DIL）について，
+関連する既存研究を網羅的かつ専門的に整理する自分用のリファレンスである．
+本設定は次の三つの要件を同時に満たす必要がある．
+\begin{itemize}
+  \item (A) 新ドメインへの適応：事前学習に乏しい専門ドメインへ検出性能を引き上げる．
+  \item (B) 過去ドメインの忘却抑制：逐次学習で過去に学習したドメインを忘れない．
+  \item (C) ゼロショット汎化の保持（ZCOCO）：事前学習由来の汎用検出能力（COCO 検出）を保持する．
+\end{itemize}
+
+課題(A)の深刻さは図~\ref{fig:gap}に示される．Grounding DINO は一般的な ODinW-13 では
+ゼロショットで 49.2~mAP に達するが，VLM 事前学習に乏しい概念を含む Roboflow100-VL~\cite{rf100vl}
+ではゼロショット平均 16~mAP，医療ドメインでは 2\%未満まで低下する．
+課題(B)(C)は，新ドメインへ素朴に逐次 fine-tune すると，共有検出経路が上書きされて
+過去ドメインと COCO の双方を破滅的に忘却することに対応する．
+これら(A)(B)(C)を同時に満たす「事前学習 VLM 検出器のドメイン増加型継続学習」は未開拓である．
+本研究の提案手法は，本体を凍結し各ドメインを低ランク適応（LoRA）で学習しつつ，
+更新部分空間を過去タスクおよび COCO（task-0）の勾配空間と直交化する InfLoRA 型の枠組みであり，
+最も近い競合は ZiRa~\cite{zira} と DitHub~\cite{dithub} である．
+
+\begin{figure}[tb]
+\centering
+\includegraphics[width=0.6\linewidth]{figs/fig2_adaptation_gap.pdf}
+\caption{事前学習 VLM 検出器の適応ギャップ（課題A）．Grounding DINO のゼロショット検出 mAP は，
+一般ドメイン（ODinW-13）から専門ドメイン（RF100-VL）で大きく低下する~\cite{rf100vl}．}
+\label{fig:gap}
+\end{figure}
+
+本稿の構成は次の通りである．
+第\ref{sec:ovd}節でオープン語彙検出と継続物体検出の地形図を整理し，
+第\ref{sec:theory}節で継続学習の基礎と忘却の理論を，
+第\ref{sec:lora}節で提案手法の基盤となる LoRA/PEFT ベース継続学習を深掘りする．
+第\ref{sec:toolbox}節で忘却機序分析（C2）に転用できる方法論を整理し，
+第\ref{sec:vlmcl}節で直接競合となる VLM/OVD 継続学習とゼロショット保持の手法群を扱う．
+第\ref{sec:novelty}節で本研究の位置づけと新規性を述べ，第\ref{sec:conclusion}節でまとめる．
+
+%==================================================================
+\section{オープン語彙検出と継続物体検出の地形図}
+\label{sec:ovd}
+\input{detection_ovd}
+
+%==================================================================
+\section{継続学習の基礎と忘却の理論}
+\label{sec:theory}
+\input{forgetting_theory}
+
+%==================================================================
+\section{LoRA/PEFT ベース継続学習}
+\label{sec:lora}
+\input{lora_peft}
+
+%==================================================================
+\section{忘却機序分析の方法論（道具箱）}
+\label{sec:toolbox}
+\input{forgetting_analysis_toolbox}
+
+%==================================================================
+\section{VLM/OVD 継続学習とゼロショット保持}
+\label{sec:vlmcl}
+\input{vlm_ovd_adaptation}
+
+%==================================================================
+\section{本研究の位置づけと新規性}
+\label{sec:novelty}
+これまでに整理した各領域を踏まえ，本研究の位置づけを述べる．
+図~\ref{fig:map}に主要手法を「ドメイン数に対するパラメータ・メモリ拡張」（横軸）と
+「事前学習ゼロショット（ZCOCO 相当）の明示的保持機構の強さ」（縦軸）の二軸で配置する．
+左上の領域（パラメータ一定かつ強いゼロショット保持を VLM 検出で達成）は空白であり，
+ここが本研究の狙いである．
+
+\begin{figure}[tb]
+\centering
+\includegraphics[width=0.9\linewidth]{figs/fig1_positioning.pdf}
+\caption{既存手法の位置づけマップ．横軸はドメイン数に対するパラメータ・メモリ拡張，
+縦軸は事前学習ゼロショット（ZCOCO 相当）の明示的保持機構の強さを表す．
+左上の target region が本研究の狙いである．
+色は手法ファミリ（baseline / projection / lora-peft / merging / vlm-ovd-cl）を示す．}
+\label{fig:map}
+\end{figure}
+
+低ランクと直交部分空間という発想自体は，Chaudhry ら~\cite{lowrankorth} や InfLoRA~\cite{inflora} に
+先行がある．したがって本研究の新規性は，これらを
+(i) 事前学習 VLM 物体検出器（MM-Grounding DINO）上で，
+(ii) COCO を task-0 として直交保護対象に含め，
+(iii) ゼロショット（ZCOCO）保持を明示目標とする点に絞られる（表~\ref{tab:novelty}）．
+ZiRa~\cite{zira} や DitHub~\cite{dithub} とは忘却抑制の機序が異なり（勾配部分空間の直交化 対
+出力ノルム正則化・モジュール増加），パラメータ拡張一定と推論の単純さで優位を主張しうる．
+また，O-LoRA~\cite{olora} がゼロショット保持を実証し，ZSCL~\cite{zscl} の特徴蒸留や
+WiSE-FT~\cite{wiseft}・model soups~\cite{modelsoups}・task arithmetic~\cite{taskarith} の重み統合が
+ZiRa/DitHub の外側で ZCOCO 保持の有力なベースラインかつ補完成分となる．
+
+\begin{table}[tb]
+\caption{主要手法と本研究の差別化}
+\label{tab:novelty}
+\small
+\begin{tabularx}{\linewidth}{l c X c c c}
+\hline
+手法 & 設定 & 忘却抑制機序 & 拡張 & ZS保持 & 検出 \\
+\hline
+素朴逐次FT & 下限 & なし & 一定 & なし & --- \\
+Low-rank Orth.~\cite{lowrankorth} & 分類CL & 直交部分空間（Stiefel） & 増 & 暗黙 & 否 \\
+InfLoRA~\cite{inflora} & 分類CL & 勾配部分空間の直交化 & 一定 & 暗黙 & 否 \\
+O-LoRA~\cite{olora} & LLM CL & 直交化損失 & 線形増 & 実証 & 否 \\
+ZiRa~\cite{zira} & VLM検出 & 出力ノルム正則化（ZiL） & 一定 & 明示 & 是 \\
+DitHub~\cite{dithub} & VLM検出 & モジュール分離・統合 & 増 & 明示 & 是 \\
+本研究 & VLM検出 & 勾配直交化＋COCO保護 & 一定 & 明示 & 是 \\
+\hline
+\end{tabularx}
+\end{table}
+
+%==================================================================
+\section{まとめと今後の課題}
+\label{sec:conclusion}
+広域な既存研究の調査により，本研究は次の三点で位置づけられる．
+第一に，本設定は形式的に DIL（クラス非重複のハイブリッド）であり忘却は原理的に困難で，
+NTK 理論・勾配部分空間・内在次元・線形モード接続性が，提案手法の理論的支柱であると同時に
+機序分析の道具を与える（第\ref{sec:theory}・\ref{sec:toolbox}節）．
+第二に，ZCOCO 保持は適応・過去ドメイン忘却とは独立した故障モードであり，
+特徴蒸留・重み統合・推論時ルーティングが ZiRa/DitHub の外側で必須のベースライン群となる
+（第\ref{sec:vlmcl}節）．
+第三に，評価は Roboflow100-VL を軸に，OVD 適応・MoE の近年研究も比較に含めるべきである
+（第\ref{sec:ovd}節）．
+
+今後検証すべき主要な問いは次の通りである．
+(1) 重み統合・特徴蒸留・ルーティングは grounded detector で成立するか
+（既存実証の多くは CLIP 分類である）．
+(2) NTK・GPM 流のアラインメント測定は大規模検出器・非重複ラベルで忘却を予測できるか．
+(3)「忘却は分類側に局在し回帰側は頑健」という二段検出器の知見は，
+MM-Grounding DINO のクエリ・対照ヘッドへ転移するか．
+(4) 直交化 LoRA と COCO 保護，および各補完成分（蒸留・統合・ルーティング）は
+加算的か，冗長か，競合か，そして最良の適応・保持・ZCOCO のパレート前線はどれか．
+
+\bibliographystyle{splncs04}
+\bibliography{ref}
+
+\end{document}

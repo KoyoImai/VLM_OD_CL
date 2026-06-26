@@ -1,0 +1,4 @@
+# exp_008 sweep / underwater: lr=5e-3, rank=32, alpha=32(scaling=1)
+_base_ = './underwater_lora.py'
+model = dict(lora=dict(r=32, alpha=32, include=['encoder', 'decoder', 'bbox_head']))
+optim_wrapper = dict(optimizer=dict(lr=5e-3))
