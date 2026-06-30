@@ -16,19 +16,12 @@
 
 2. 承認なしに実験を実行しない．
 
-3. 実験結果を報告する際は，必ず次の問いや改善案を複数提案する．
+3. 実験結果を報告する際は，必ず正確な値を示す．
 
 4. 新しい論文を読んだら `papers/` に要約を残す．
 
 
-## ディレクトリ構成
-- papers/：論文PDF・要約
-- experiments/exp_NNN/：実験ごとのディレクトリ
-  - design.md：実験設計書（承認ゲート）
-  - results/：実験結果
-  - outputs/figures/：可視化結果
-  - outputs/notes.md：実験メモ
-- .claude/commands/：カスタムスラッシュコマンド
+
 
 ## ディレクトリ・ファイル構成
 
@@ -37,6 +30,9 @@
 ```
 VLM_OD_CL-main/
 ├── CLAUDE.md                       # 本ファイル。プロジェクトの方針・コマンド・注意点
+├── .claude/
+│   ├── commands                    # カスタムコマンド
+│   └── rules                       # 本プロジェクトを進めていく上でのルール（必ず読む）
 ├── README.md                       # データセット・統計・学習コマンドの正本（まず読む）
 ├── Dockerfile                      # 環境構築用
 │
@@ -68,8 +64,7 @@ VLM_OD_CL-main/
 │
 ├── visualize_prediction.ipynb      # ★研究用：予測と正解の比較可視化ノートブック
 │
-├── mmdet/                          # mmdetection 本体（上流。editable install）
-└── outputs/                        # 推論スクリプトの既定出力先（vis/ と preds/）
+└── mmdet/                          # mmdetection 本体（上流。editable install）
 ```
 ★印が、本研究プロジェクト固有のディレクトリ・ファイル。それ以外は上流 mmdetection 由来。
 
@@ -157,3 +152,15 @@ python demo/image_demo.py \
   --out-dir ./experiments/exp_NNN/<ドメイン名>_vis \
   --pred-score-thr 0.3
 ```
+
+
+## 研究の前提
+- VLM物体検出モデルとしてMM-Grounding DINO（Swin-T）を使用する．必ず元論文とプログラムを参照し，詳細なモデル構造を理解する．
+
+
+## 分析・実験を提案する時のルール
+提案する各分析は，以下を必ず満たすこと．1つでも欠けている場合は提案しない．
+- 1．研究課題の 
+
+
+

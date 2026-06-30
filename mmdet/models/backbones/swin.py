@@ -744,7 +744,11 @@ class SwinTransformer(BaseModule):
             self.load_state_dict(state_dict, False)
 
     def forward(self, x):
-        x, hw_shape = self.patch_embed(x)
+
+        # 画像をトークンの列に変換（Patch Partition & Linear Enbedding）
+        # x: (B, H'/4 * W'/4, 96)
+        # hw_shape: (H'/4, W'/4)
+        x, hw_shape = self.patch_embed(x)    
 
         if self.use_abs_pos_embed:
             x = x + self.absolute_pos_embed

@@ -1,27 +1,42 @@
 # VLM_OD_CL
 事前学習済みVision Language Modelを用いた物体検出の継続学習
 
-## [構築手順 & コード分析](https://github.com/KoyoImai/VLM_OD_CL/tree/main/setup_and_code_analysis)
+## ディレクトリ構成
 ```
-mmdetection/
-├── mmdet/
-├── configs/        ：設定ファイル群（モデルxデータセット毎のレシピ）
-│   ├── _base_/     ：継承の土台（datasets，models，schedules）
-├── tools/          ：実行スクリプト群
-│   ├── train.py    ：単一GPU学習
+VLM_OD_CL-main/
+├── CLAUDE.md                       # 本ファイル。プロジェクトの方針・コマンド・注意点
+├── README.md                       # データセット・統計・学習コマンドの正本（まず読む）
+├── Dockerfile                      # 環境構築用
+│
+├── configs/mm_grounding_dino/      # MM-Grounding DINO の config 群（上流ベース）
+│   └── grounding_dino_swin-t_finetune_8xb4_20e_{domain}.py # ★研究用：ドメイン毎の学習 config
+│                                   #   {domain} = underwater / aerial / videogames /
+│                                   #   microscopic / documents / electromagnetic / real_world
+│                                   #   （smoke, cat は動作確認用の初期テスト config）
+│
+├── tools/
+│   ├── train.py                    # 学習エントリポイント（上流）
+│   └── test.py                     # 評価エントリポイント（上流）
+│
 ├── demo/
-├── docker/
-├── docs/
-├── projects/
-├── requirements/
-├── tests/
-├── resources/
-├── setup.py/
-├── requirements.txt
-├── model-index.yml
-├── dataset-index.yml
-├── README.md / README_zh-CN.md
-└── .gitignore
+│   └── image_demo.py               # 推論・可視化スクリプト（上流）
+│
+├── experiments/                    # ★研究用：実験ごとのディレクトリを置く
+│                                   #   exp_NNN/design.md（実験設計書・承認ゲート）
+│                                   #   exp_NNN/{domain}_work_dir（学習出力：ckpt, ログ）
+│                                   #   （現状は .gitkeep のみ）
+│
+├── papers/                         # ★研究用：論文 PDF・要約
+│   ├── MM-GroudingDINO.pdf
+│   └── ZiRaGroundingDINO.pdf
+│
+├── setup_and_code_analysis/        # ★研究用：環境構築とコード解析のメモ
+│   ├── setup/README.md
+│   └── code_analysis/README.md
+│
+├── visualize_prediction.ipynb      # ★研究用：予測と正解の比較可視化ノートブック
+│
+└── mmdet/                          # mmdetection 本体（上流。editable install）
 ```
 
 ## Roboflow100データセット」の準備
