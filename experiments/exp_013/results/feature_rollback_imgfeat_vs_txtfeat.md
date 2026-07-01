@@ -79,6 +79,47 @@
 投影アダプタは backbone 本体に約1割を上乗せする補助部品。**忘却・適応いずれも主役は共有検出経路**（exp_012/exp_004 と一貫）。
 次段 exp_014 で検出経路の入口＝Feature Enhancer(encoder) を切り分ける。
 
+## 追加考察（2026-07-01）：ドリフト分析 — 忘却は「どこが動いたか」で決まる
+
+特徴抽出部の各モジュールが学習でどれだけ動いたか、相対ドリフト ‖θ1_d^U−θ0‖/‖θ0‖ を測定
+（**整数バッファ `relative_position_index`/`position_ids` は分母から除外**。含めると backbone が
+巨大な整数バッファに希釈され誤って ≈0 に見える。要注意点）。
+
+### 相対ドリフト（浮動小数キーのみ）
+| ドメイン | backbone(Swin) | neck | language_model(BERT) | text_feat_map |
+|---|---|---|---|---|
+| underwater | 0.017 | 0.064 | 0.015 | 0.039 |
+| aerial | 0.012 | 0.042 | 0.010 | 0.028 |
+| microscopic | 0.015 | 0.052 | 0.014 | 0.033 |
+| videogames | 0.013 | 0.050 | 0.014 | 0.032 |
+| documents | 0.020 | 0.075 | 0.020 | 0.045 |
+| electromagnetic | 0.024 | 0.082 | 0.021 | 0.054 |
+
+**観察**: **投影アダプタ（neck 0.04〜0.08 / text_feat_map 0.03〜0.05）は backbone/BERT（0.01〜0.02）より
+大きく動く**。小さく可塑的な射影層は速く適応し、巨大な事前学習 backbone はゆっくりしか動かない。
+
+### 回復量 / ドリフト（動いた量あたりの ZCOCO 忘却寄与、全モジュール統合：exp_012/013/014）
+| モジュール | 相対ドリフト | ZCOCO回復 | 回復/ドリフト | 区分 |
+|---|---|---|---|---|
+| **backbone Swin（画像 self-attn）** | 0.017 | 0.037 | **2.20** | ★load-bearing |
+| **encoder image（画像 deformable self-attn）** | 0.068 | 0.129 | **1.90** | ★load-bearing |
+| encoder fusion（cross-modal） | 0.068 | 0.051 | 0.74 | inert |
+| language_model BERT | 0.016 | 0.010 | 0.65 | inert |
+| encoder text（text self-attn） | 0.045 | 0.025 | 0.55 | inert |
+| **neck（画像 projection）** | 0.061 | 0.004 | **0.07** | inert |
+| **text_feat_map（text projection）** | 0.038 | 0.002 | **0.06** | inert |
+
+### 解釈（本プロジェクトの中核的知見）
+1. **忘却は「動いた量」ではなく「動いた場所」で決まる**。回復/ドリフトは明快な2クラスタに分かれる：
+   - **★load-bearing（≈2.0）= 画像の空間的自己注意**：backbone Swin と encoder image。**この2つだけが**
+     動いた量あたりの COCO 破壊力が突出。
+   - **inert（≤0.74）= それ以外全て**：cross-modal fusion・BERT・text self-attn・そして射影層（neck/text_feat_map）。
+2. **neck / text_feat_map は最も動くのに最も無害**（回復/ドリフト 0.06〜0.07 で全モジュール最小）。
+   1×1 conv/Linear の**チャネル射影は空間表現を壊さない**ため、大きく再パラメータ化されても COCO を害さない。
+3. → exp_014 の結論（画像 self-attn が load-bearing）を上流にも拡張。**忘却源は "画像の空間的注意" に一貫して局在**し、
+   射影・テキスト系・cross-modal 融合は「動いても無害」。**継続学習の忘却緩和は画像自己注意
+   （`backbone.stages.*.attn` と `encoder.layers.*.self_attn`）に限定投下すればよい**という設計指針を強化する。
+
 ## 成果物
 - ハイブリッド: `experiments/exp_013/hybrids/{domain}_{imgfeat|txtfeat}_theta0.pth`（12本）
 - 評価: `experiments/exp_013/{domain}_{imgfeat|txtfeat}_theta0_{coco|adapt}/`（24本）
