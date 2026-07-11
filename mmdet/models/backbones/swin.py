@@ -755,7 +755,11 @@ class SwinTransformer(BaseModule):
         x = self.drop_after_pos(x)
 
         outs = []
+        
+        # 各stageごとに順番にforward処理を実行
         for i, stage in enumerate(self.stages):
+            
+            # i 番目の stage の処理
             x, hw_shape, out, out_hw_shape = stage(x, hw_shape)
             if i in self.out_indices:
                 norm_layer = getattr(self, f'norm{i}')

@@ -87,6 +87,25 @@ decoder(whole) をさらに内部処理に分解（各処理＋直後 post-norm 
 > decoder 内部は self/x_text/x_img/ffn いずれも小さく均等（各処理の ZCOCO 回復 +0.00〜+0.02、最大は dec:ffn が6中4ドメイン）。
 > **画像 cross-attn は突出せず**、encoder の画像 self-attn が支配的だったのとは対照的。詳細: [[exp_016/results/decoder_internal_rollback]]。
 
+---
+
+## ④ neckTfm-only（射影アダプタ neck＋text_feat_map の18 params のみ学習。exp_017）
+ロールバック（重み合成）ではなく**実学習**。画像/テキスト backbone・Feature Enhancer 以降を全凍結し、射影のみ適応。
+frozen / unfrozen / θ0 と同基準（ZCOCO=`eval_base_coco.py`・適応=自ドメインFT config・(800,1333)・4GPU）で対比。
+
+| ドメイン | θ0(ZCOCO) | ZCOCO: frozen | unfrozen | **neckTfm** | ‖ 適応: frozen | unfrozen | **neckTfm** | 対unfrozen |
+|---|---|---|---|---|---|---|---|---|
+| underwater | 0.504 | 0.389 | 0.407 | **0.465** | ‖ 0.337 | 0.359 | **0.208** | −0.151 |
+| aerial | 0.504 | 0.318 | 0.369 | **0.470** | ‖ 0.468 | 0.486 | **0.350** | −0.136 |
+| microscopic | 0.504 | 0.327 | 0.288 | **0.384** | ‖ 0.499 | 0.538 | **0.272** | −0.266 |
+| videogames | 0.504 | 0.324 | 0.315 | **0.462** | ‖ 0.719 | 0.782 | **0.113** | −0.669 |
+| documents | 0.504 | 0.275 | 0.211 | **0.486** | ‖ 0.478 | 0.542 | **0.196** | −0.346 |
+| electromagnetic | 0.504 | 0.331 | 0.269 | **0.447** | ‖ 0.454 | 0.502 | **0.222** | −0.280 |
+
+> **忘却はほぼ完全に防げる**（neckTfm ZCOCO 0.384〜0.486 で全ドメイン frozen/unfrozen を上回り θ0=0.504 に肉薄）。
+> **代償として適応はほぼ捨てる**（unfrozen比 −0.14〜−0.67）。クラス数の多い/遠いドメイン（videogames, microscopic, documents, electromagnetic）ほど毀損大。
+> ＝検出経路（Feature Enhancer 以降）を凍結すると忘却は止まるが遠いドメインへ適応できない、という**トレードオフ点**を1つ与える。詳細: [[exp_017/design]]。
+
 ## 要約（実 mAP で見た各モジュールの位置づけ）
 - **忘却（ZCOCO）の最大回復は enc:whole（0.445〜0.475、θ0=0.504 目前）**、次いで enc:image（0.405〜0.460）。
   → COCO 忘却の主座は **Feature Enhancer、特に画像 self-attn**。
@@ -96,7 +115,9 @@ decoder(whole) をさらに内部処理に分解（各処理＋直後 post-norm 
   cls/reg/qsel/enc:text/enc:fusion は unfrozen 近傍＝適応にほぼ不要。
 
 → **忘却源・適応の要はいずれも「画像の空間的自己注意」に局在**（backbone Swin と encoder image）。
-現在 exp_016 で Cross-Modality Decoder の画像 cross-attn も同様かを検証中。
+Cross-Modality Decoder の画像 cross-attn は突出せず（exp_016）、「画像の空間的注意＝忘却源」は encoder の self-attn に固有と精密化された。
+- **構成的検証（exp_017・④）**: 検出経路を全凍結し射影18 params のみ学習すると **ZCOCO≈θ0（忘却ほぼ皆無）だが適応は壊滅**（unfrozen比 −0.14〜−0.67）。
+  忘却源（encoder画像self-attn 等）を触らなければ COCO は守れるが、その凍結が適応も同時に殺す＝**保持と適応が同じ経路で競合**するロールバック分析の結論を実学習でも裏付け。
 
 ## 関連
 - [[exp_012/results/swap1_swin_to_theta0]] / [[exp_012/results/swap2_bert_to_theta0]]
