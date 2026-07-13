@@ -14,18 +14,21 @@
 ## 行動原理
 1. 実験を実行する前に必ず `experiments/exp_NNN/design.md` を作成し，ユーザーの承認を得る．
 
-2. 承認なしに実験を実行しない．
+2. design.mdは，ユーザーが作成する実験ノートの「位置付け」「目的」「仮説」「条件」「判定基準」をベースに作成する．
 
-3. 実験結果を報告する際は，必ず正確な値を示す．
+3. 承認なしに実験を実行しない．
 
-4. 新しい論文を読んだら `papers/` に要約を残す．
+4. 実験結果を報告する際は，必ず正確な値を示す．
+
+5. 新しい論文を読んだら `papers/` に要約を残す．
 
 
 
 
 ## ディレクトリ・ファイル構成
 
-本リポジトリは OpenMMLab **mmdetection（v3.x）**をベースにしており、`mmdet/` `tools/` `configs/`（大部分）`docs/` `tests/` などは上流のコードをほぼそのまま使用している。以下は、**本研究プロジェクトに関連する主要なディレクトリ・ファイル**を示す。
+本リポジトリは OpenMMLab **mmdetection（v3.x）**をベースにしており、`mmdet/` `tools/` `configs/`（大部分）`docs/` `tests/` などは上流のコードをほぼそのまま使用している．
+以下は、**本研究プロジェクトに関連する主要なディレクトリ・ファイル**を示す．
 
 ```
 VLM_OD_CL-main/
@@ -52,7 +55,12 @@ VLM_OD_CL-main/
 ├── experiments/                    # ★研究用：実験ごとのディレクトリを置く
 │                                   #   exp_NNN/design.md（実験設計書・承認ゲート）
 │                                   #   exp_NNN/{domain}_work_dir（学習出力：ckpt, ログ）
-│                                   #   （現状は .gitkeep のみ）
+│                                   
+├── experiment_notes/               # ★研究用：実験ノートを置く
+│   ├── research_question.md        #   研究を進めてく上での中心的な問いを記録する．
+│   ├── note_rule.md                #   実験ノートを書く際のルール．基本的にはユーザ用．
+│   └── note{x}.md                  #   {x}は実験番号．本実験の「位置付け」「目的」「仮説」「条件」「判定基準」「結果」「判定」「解釈」を記述．記述はユーザー限定
+│                                   #   ここに配置された実験ノートを参照し，実験計画を立てる．
 │
 ├── papers/                         # ★研究用：論文 PDF・要約
 │   ├── MM-GroudingDINO.pdf
@@ -66,7 +74,8 @@ VLM_OD_CL-main/
 │
 └── mmdet/                          # mmdetection 本体（上流。editable install）
 ```
-★印が、本研究プロジェクト固有のディレクトリ・ファイル。それ以外は上流 mmdetection 由来。
+★印が本研究プロジェクト固有のディレクトリ・ファイル．
+それ以外は上流 mmdetection 由来のプログラム・ファイル．
 
 - 学習出力（work_dir）は `experiments/exp_NNN/` 配下に置く方針．
 - ドメイン統合済みのデータセットは，リポジトリ外の `/workspace/kouyou/datasets/rf100_domain/{domain}/<train|valid>/` にある．
@@ -83,7 +92,7 @@ OpenMMLab **mmdetection**（v3.x）をベースに，Vision Language Model の�
 - `experiments/exp_NNN/outputs/*_work_dir` — ドメイン毎の学習出力（チェックポイント，ログ，`vis_data/scalars.json`）を配置．ソースではないので編集はしない．
 
 ライブラリは editable インストール（`pip install -e .`）されているため、`mmdet/` への変更は
-再インストールなしで反映される。
+再インストールなしで反映される．
 
 ## 中核となるアーキテクチャ（学習実行の仕組み）
 mmdetection は mmengine を介した**config駆動の構成**を採用している，
@@ -92,9 +101,6 @@ mmdetection は mmengine を介した**config駆動の構成**を採用してい
 - **config は `_base_` で継承される．**
 各.  `mm_grounding_dino/*_<domain>.py` は `_base_ = 'grounding_dino_swin-t_pretrain_obj365.py'` を設定し，差分（データセット，クラス，スケジュール）のみを上書きする．
 `_base_/` に共通の datasets/models/schedules/runtime が存在する．
-
-- **ドメイン毎の　config　パターン**：
-
 
 
 ### プロジェクト固有の注意点（上流ドキュメントには無い）
@@ -154,13 +160,6 @@ python demo/image_demo.py \
 ```
 
 
-## 研究の前提
-- VLM物体検出モデルとしてMM-Grounding DINO（Swin-T）を使用する．必ず元論文とプログラムを参照し，詳細なモデル構造を理解する．
-
-
-## 分析・実験を提案する時のルール
-提案する各分析は，以下を必ず満たすこと．1つでも欠けている場合は提案しない．
-- 1．研究課題の 
 
 
 

@@ -189,6 +189,74 @@ bash tools/dist_train.sh configs/mm_grounding_dino/grounding_dino_swin-t_finetun
 ```
 
 
+## ZiRaの学習・評価の実行方法
+ZiRa（Deng et al., NeurIPS 2024）を MM-Grounding DINO 上で再現した実装の実行方法．
+実装ファイルの所在と役割は `experiments/exp_020/implementation_plan.md` の新規ファイル台帳が正本．
+config の `custom_imports` が追加モジュールを自動登録するため，特別なセットアップは不要（リポジトリルートで実行する）．
+`<domain>` は `underwater | aerial | videogames | microscopic | documents | electromagnetic`．
+
+### プログラムの配置
+上流 mmdetection の既存ファイルは一切変更しておらず，追加は以下の新規ファイルのみ．
+mmdet 側の 3 ファイルは同種プログラム群と同じディレクトリに置き，config の `custom_imports` で読み込む（`__init__.py` への追記なし）．
+
+| パス | 役割 |
+|---|---|
+| `mmdet/models/layers/zira_layers.py` | RDB 本体（ZiRaLinear / ZiRaConvRDB．凍結重み+HLRB+LLRB+scaling と ZiL 計算） |
+| `mmdet/models/necks/zira_channel_mapper.py` | ZiRaChannelMapper（ChannelMapper のサブクラス．GroupNorm 前に RDB 出力を加算） |
+| `mmdet/models/detectors/zira_grounding_dino.py` | ZiRaGroundingDINO（GroundingDINO のサブクラス．text_feat_map 差し替え・ZiL 回収・本体凍結） |
+| `experiments/exp_020/configs/zira_<domain>.py` | ドメイン毎の学習 config（既存ドメイン config を継承し type を差し替え） |
+| `experiments/exp_020/configs/zira_eval_coco.py` | ZCOCO 評価用 config |
+| `experiments/exp_020/configs/zira_official_underwater.py` | 公式ハイパラ再現 config（実装検証用） |
+| `experiments/exp_020/check_zira_setup.py` | 実装の健全性検証スクリプト |
+| `experiments/exp_020/merge_hlrb.py` | Rep+ 融合スクリプト（逐次学習のタスク境界用） |
+| `experiments/exp_020/run_train.sh` | 学習＋ZCOCO評価の一括実行スクリプト |
+
+ドメイン`<domain>`で学習を実行する．通常のMM-Grounding DINOに従って学習のハイパーパラメータを決定する場合（20 epoch・lr 1e-4・seed=0，プロジェクト標準），以下のコマンドを実行する．
+```
+# 1gpuでの学習
+python tools/train.py experiments/exp_020/configs/zira_<domain>.py --work-dir experiments/exp_020/<domain>_zira_work_dir
+
+# 4gpuでの学習
+bash tools/dist_train.sh experiments/exp_020/configs/zira_<domain>.py 4 --work-dir experiments/exp_020/<domain>_zira_work_dir
+```
+
+### 学習＋ZCOCO評価の一括実行
+学習と best checkpoint の ZCOCO 評価を連続実行する（ログは `experiments/exp_020/train.log` に集約）．
+```
+# 全6ドメイン（underwater aerial videogames microscopic documents electromagnetic の順に直列）
+bash experiments/exp_020/run_train.sh
+
+# ドメイン指定（複数可，指定順に直列実行）
+bash experiments/exp_020/run_train.sh underwater videogames
+```
+
+### ZCOCO評価（単体）
+ZiRa の checkpoint は RDB（Adapter）のキーを含むため，`eval_base_coco.py` ではなく ZiRa 用の評価 config を使う．
+```
+bash tools/dist_test.sh experiments/exp_020/configs/zira_eval_coco.py \
+  experiments/exp_020/<domain>_zira_work_dir/best_coco_bbox_mAP_epoch_<N>.pth 4 \
+  --work-dir experiments/exp_020/<domain>_zira_zcoco
+```
+
+### 公式ハイパラでの学習（実装検証用）
+公式実装のスケジュール（2000 iter・batch 2・lr 1e-3・iter 800 で decay）を再現する config（underwater 用のみ）．1 GPU で約25分．
+```
+CUDA_VISIBLE_DEVICES=0 python tools/train.py experiments/exp_020/configs/zira_official_underwater.py \
+  --work-dir experiments/exp_020/underwater_zira_official_work_dir
+```
+
+### 実装の健全性検証
+学習対象の監査・θ0 等価性・勾配疎通・融合等価性など7項目を確認する（7/7 で exit 0）．実装を変更したら必ず再実行する．
+```
+python experiments/exp_020/check_zira_setup.py
+```
+
+### 逐次学習でドメイン間を渡すとき（Rep+ 融合）
+best checkpoint は HLRB 融合前の状態で保存されるため，次ドメインの学習へ渡す前に必ずマージスクリプトを通し，出力を次ドメイン config の `load_from` に指定する．単発学習と ZCOCO 評価には不要（評価時の forward が融合と数学的に等価なため）．
+```
+python experiments/exp_020/merge_hlrb.py <融合前.pth> <融合後.pth>
+```
+
 
 
 

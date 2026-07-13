@@ -89,3 +89,16 @@ RDB 実効ノルムは本体の 21〜33% まで成長（s は 0.1 → 0.54〜0.8
 - 対象: underwater のみ
 - 判定: ZCOCO 低下が ~1 pt 級に収まれば実装は忠実（差は体制）、
   収まらなければ実装を再監査する
+
+## 追記（2026-07-12、ユーザー指示）: 公式ハイパラ版の全ドメイン展開
+
+対照 run（underwater のみ）を残り 5 ドメイン（aerial / videogames / microscopic /
+documents / electromagnetic）へ拡張する。設定は zira_official_underwater.py と
+同一（2000 iter / batch 2 / lr 1e-3 / iter 800 decay / 1 GPU / dn 有効 / seed=0）。
+これにより「公式体制」と「20 epoch 体制」の 2 行が全 6 ドメインで揃い、
+学習量と適応・忘却のトレードオフの体制依存性をドメイン横断で記録できる。
+underwater は 2026-07-11 の対照 run の結果（適応 0.111 / ZCOCO 0.491）を再利用する。
+
+- config: `configs/zira_official_{domain}.py`、実行: `run_official.sh`
+- 出力: `{domain}_zira_official_work_dir` / `{domain}_zira_official_zcoco`
+- コスト: 5 ドメイン × 約 30 分（学習 1 GPU 約 25 分 + ZCOCO 約 6 分）≈ 2.5〜3 時間

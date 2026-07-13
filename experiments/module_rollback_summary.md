@@ -106,6 +106,23 @@ frozen / unfrozen / θ0 と同基準（ZCOCO=`eval_base_coco.py`・適応=自ド
 > **代償として適応はほぼ捨てる**（unfrozen比 −0.14〜−0.67）。クラス数の多い/遠いドメイン（videogames, microscopic, documents, electromagnetic）ほど毀損大。
 > ＝検出経路（Feature Enhancer 以降）を凍結すると忘却は止まるが遠いドメインへ適応できない、という**トレードオフ点**を1つ与える。詳細: [[exp_017/design]]。
 
+## ⑤ ZiRa 再現（exp_020。RDB を neck＋text_feat_map に並列挿入、ZiL λ=0.1、本体全凍結）
+
+frozen / unfrozen / neckTfm と同基準（ZCOCO=`eval_base_coco.py` 同等・適応=自ドメインFT config・seed=0・4GPU・20ep）。
+詳細と対照 run（公式ハイパラ）: [[exp_020/results/zira_reproduction]]。
+
+| ドメイン | θ0(ZCOCO) | ZCOCO: neckTfm | **ZiRa** | ‖ 適応: neckTfm | **ZiRa** | 対neckTfm |
+|---|---|---|---|---|---|---|
+| underwater | 0.504 | 0.465 | **0.436** | ‖ 0.208 | **0.183** | −0.025 |
+| aerial | 0.504 | 0.470 | **0.473** | ‖ 0.350 | **0.297** | −0.053 |
+| microscopic | 0.504 | 0.384 | **0.482** | ‖ 0.272 | **0.192** | −0.080 |
+| videogames | 0.504 | 0.462 | **0.457** | ‖ 0.113 | **0.097** | −0.016 |
+| documents | 0.504 | 0.486 | **0.476** | ‖ 0.196 | **0.166** | −0.030 |
+| electromagnetic | 0.504 | 0.447 | **0.466** | ‖ 0.222 | **0.183** | −0.039 |
+
+> 既存手法 ZiRa は挿入位置が neckTfm と同じ（学習形態は並列枝＋ZiL）。適応は全ドメインで neckTfm を下回り、
+> ZCOCO は θ0 比 −2.2〜−6.8 pt（neckTfm 比 3勝3敗）。公式ハイパラ（2000 iter）では uw 適応 0.111 / ZCOCO 0.491（−1.3 pt、論文水準）。
+
 ## 要約（実 mAP で見た各モジュールの位置づけ）
 - **忘却（ZCOCO）の最大回復は enc:whole（0.445〜0.475、θ0=0.504 目前）**、次いで enc:image（0.405〜0.460）。
   → COCO 忘却の主座は **Feature Enhancer、特に画像 self-attn**。
