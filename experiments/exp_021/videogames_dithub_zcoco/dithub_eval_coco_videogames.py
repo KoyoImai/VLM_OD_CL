@@ -1,35 +1,5 @@
 auto_scale_lr = dict(base_batch_size=64, enable=False)
 backend_args = None
-class_name = (
-    'close',
-    'open',
-    'Platelets',
-    'RBC',
-    'WBC',
-    'Ancylostoma Spp',
-    'Ascaris Lumbricoides',
-    'Enterobius Vermicularis',
-    'Fasciola Hepatica',
-    'Hymenolepis',
-    'Schistosoma',
-    'Taenia Sp',
-    'Trichuris Trichiura',
-    'celula',
-    '4-fold defect',
-    'Str_pne',
-    'dc',
-    'Mitosis',
-    'activated',
-    'non-activated',
-    'ballooning',
-    'fibrosis',
-    'inflammation',
-    'steatosis',
-    'thick-dark-mark',
-    'thick-light-mark',
-    'thin-dark-mark',
-    'thin-light-mark',
-)
 coco_od_dataset = dict(
     ann_file='o365v1_train_odvg.json',
     backend_args=None,
@@ -199,9 +169,6 @@ coco_od_dataset = dict(
     ],
     return_classes=True,
     type='ODVGDataset')
-custom_hooks = [
-    dict(type='DitHubPhaseHook', warmup_epochs=10),
-]
 custom_imports = dict(
     allow_failed_imports=False,
     imports=[
@@ -209,12 +176,11 @@ custom_imports = dict(
         'mmdet.models.detectors.dithub_grounding_dino',
         'mmdet.engine.hooks.dithub_phase_hook',
     ])
-data_root = '/workspace/kouyou/datasets/rf100_domain/microscopic/'
+data_root = 'data/objects365v1/'
 dataset_type = 'ODVGDataset'
 default_hooks = dict(
-    checkpoint=dict(
-        interval=1, max_keep_ckpts=11, save_best=None, type='CheckpointHook'),
-    logger=dict(interval=5, type='LoggerHook'),
+    checkpoint=dict(interval=1, type='CheckpointHook'),
+    logger=dict(interval=50, type='LoggerHook'),
     param_scheduler=dict(type='ParamSchedulerHook'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
     timer=dict(type='IterTimerHook'),
@@ -224,45 +190,12 @@ env_cfg = dict(
     cudnn_benchmark=False,
     dist_cfg=dict(backend='nccl'),
     mp_cfg=dict(mp_start_method='fork', opencv_num_threads=0))
-find_unused_parameters = True
 lang_model_name = '/workspace/kouyou/datasets/bert-base-uncased'
 launcher = 'pytorch'
-load_from = 'https://download.openmmlab.com/mmdetection/v3.0/mm_grounding_dino/grounding_dino_swin-t_pretrain_obj365_goldg_grit9m_v3det/grounding_dino_swin-t_pretrain_obj365_goldg_grit9m_v3det_20231204_095047-b448804b.pth'
+load_from = 'experiments/exp_021/videogames_dithub_work_dir/epoch_14.pth'
 log_level = 'INFO'
 log_processor = dict(by_epoch=True, type='LogProcessor', window_size=50)
-max_epoch = 20
 max_epochs = 30
-metainfo = dict(
-    classes=(
-        'close',
-        'open',
-        'Platelets',
-        'RBC',
-        'WBC',
-        'Ancylostoma Spp',
-        'Ascaris Lumbricoides',
-        'Enterobius Vermicularis',
-        'Fasciola Hepatica',
-        'Hymenolepis',
-        'Schistosoma',
-        'Taenia Sp',
-        'Trichuris Trichiura',
-        'celula',
-        '4-fold defect',
-        'Str_pne',
-        'dc',
-        'Mitosis',
-        'activated',
-        'non-activated',
-        'ballooning',
-        'fibrosis',
-        'inflammation',
-        'steatosis',
-        'thick-dark-mark',
-        'thick-light-mark',
-        'thin-dark-mark',
-        'thin-light-mark',
-    ))
 model = dict(
     as_two_stage=True,
     backbone=dict(
@@ -309,7 +242,7 @@ model = dict(
             loss_weight=1.0,
             type='FocalLoss',
             use_sigmoid=True),
-        num_classes=28,
+        num_classes=256,
         sync_cls_avg_factor=True,
         type='GroundingDINOHead'),
     data_preprocessor=dict(
@@ -337,34 +270,93 @@ model = dict(
         post_norm_cfg=None,
         return_intermediate=True),
     dithub_classes=(
-        'close',
-        'open',
-        'Platelets',
-        'RBC',
-        'WBC',
-        'Ancylostoma Spp',
-        'Ascaris Lumbricoides',
-        'Enterobius Vermicularis',
-        'Fasciola Hepatica',
-        'Hymenolepis',
-        'Schistosoma',
-        'Taenia Sp',
-        'Trichuris Trichiura',
-        'celula',
-        '4-fold defect',
-        'Str_pne',
-        'dc',
-        'Mitosis',
-        'activated',
-        'non-activated',
-        'ballooning',
-        'fibrosis',
-        'inflammation',
-        'steatosis',
-        'thick-dark-mark',
-        'thick-light-mark',
-        'thin-dark-mark',
-        'thin-light-mark',
+        'avatar',
+        'object',
+        'assassin',
+        'atv',
+        'car',
+        'gun',
+        'gun menu',
+        'healthbar',
+        'horse',
+        'hud',
+        'map',
+        'person',
+        'surroundings',
+        'CT',
+        'T',
+        'Character',
+        'enemy',
+        'enemy-head',
+        'friendly',
+        'friendly-head',
+        'Akali',
+        'Blitzcrank',
+        'Braum',
+        'Caitlyn',
+        'Camille',
+        'Cho-Gath',
+        'Darius',
+        'Dr- Mundo',
+        'Ekko',
+        'Ezreal',
+        'Fiora',
+        'Galio',
+        'Gankplank',
+        'Garen',
+        'Graves',
+        'Heimerdinger',
+        'Illaoi',
+        'Janna',
+        'Jayce',
+        'Jhin',
+        'Jinx',
+        'Kai-Sa',
+        'Kassadin',
+        'Katarina',
+        'Kog-Maw',
+        'Leona',
+        'Lissandra',
+        'Lulu',
+        'Lux',
+        'Malzahar',
+        'Miss Fortune',
+        'Orianna',
+        'Poppy',
+        'Quinn',
+        'Samira',
+        'Seraphine',
+        'Shaco',
+        'Singed',
+        'Sion',
+        'Swain',
+        'Tahm Kench',
+        'Talon',
+        'Taric',
+        'Tristana',
+        'Trundle',
+        'Twisted Fate',
+        'Twitch',
+        'Urgot',
+        'Veigar',
+        'Vex',
+        'Vi',
+        'Viktor',
+        'Warwick',
+        'Yone',
+        'Yuumi',
+        'Zac',
+        'Ziggs',
+        'Zilean',
+        'Zyra',
+        'armor',
+        'base',
+        'rune',
+        'rune-blue',
+        'rune-gray',
+        'rune-grey',
+        'rune-red',
+        'watcher',
     ),
     dn_cfg=dict(
         box_noise_scale=1.0,
@@ -427,69 +419,38 @@ model = dict(
             type='HungarianAssigner')),
     type='DitHubGroundingDINO',
     with_box_refine=True)
-num_classes = 28
 optim_wrapper = dict(
     clip_grad=dict(max_norm=0.1, norm_type=2),
-    optimizer=dict(lr=0.0001, type='AdamW', weight_decay=0.0001),
+    optimizer=dict(lr=0.0004, type='AdamW', weight_decay=0.0001),
     paramwise_cfg=dict(
         custom_keys=dict(
             absolute_pos_embed=dict(decay_mult=0.0),
-            backbone=dict(lr_mult=0.0),
-            language_model=dict(lr_mult=0.0))),
+            backbone=dict(lr_mult=0.1),
+            language_model=dict(lr_mult=0.1))),
     type='OptimWrapper')
 param_scheduler = [
+    dict(begin=0, by_epoch=False, end=1000, start_factor=0.1, type='LinearLR'),
     dict(
         begin=0,
         by_epoch=True,
-        end=20,
+        end=30,
         gamma=0.1,
         milestones=[
-            15,
+            19,
+            26,
         ],
         type='MultiStepLR'),
 ]
 pretrained = 'https://github.com/SwinTransformer/storage/releases/download/v1.0.0/swin_tiny_patch4_window7_224.pth'
-randomness = dict(deterministic=False, seed=0)
 resume = False
 test_cfg = dict(type='TestLoop')
 test_dataloader = dict(
     batch_size=1,
     dataset=dict(
-        ann_file='valid/_annotations.coco.json',
+        ann_file='annotations/instances_val2017.json',
         backend_args=None,
-        data_prefix=dict(img='valid/'),
-        data_root='/workspace/kouyou/datasets/rf100_domain/microscopic/',
-        metainfo=dict(
-            classes=(
-                'close',
-                'open',
-                'Platelets',
-                'RBC',
-                'WBC',
-                'Ancylostoma Spp',
-                'Ascaris Lumbricoides',
-                'Enterobius Vermicularis',
-                'Fasciola Hepatica',
-                'Hymenolepis',
-                'Schistosoma',
-                'Taenia Sp',
-                'Trichuris Trichiura',
-                'celula',
-                '4-fold defect',
-                'Str_pne',
-                'dc',
-                'Mitosis',
-                'activated',
-                'non-activated',
-                'ballooning',
-                'fibrosis',
-                'inflammation',
-                'steatosis',
-                'thick-dark-mark',
-                'thick-light-mark',
-                'thin-dark-mark',
-                'thin-light-mark',
-            )),
+        data_prefix=dict(img='val2017/'),
+        data_root='/workspace/kouyou/datasets/coco2017/',
         pipeline=[
             dict(
                 backend_args=None,
@@ -526,7 +487,7 @@ test_dataloader = dict(
     sampler=dict(shuffle=False, type='DefaultSampler'))
 test_evaluator = dict(
     ann_file=
-    '/workspace/kouyou/datasets/rf100_domain/microscopic/valid/_annotations.coco.json',
+    '/workspace/kouyou/datasets/coco2017/annotations/instances_val2017.json',
     backend_args=None,
     format_only=False,
     metric='bbox',
@@ -557,202 +518,191 @@ test_pipeline = [
         ),
         type='PackDetInputs'),
 ]
-train_cfg = dict(max_epochs=20, type='EpochBasedTrainLoop', val_interval=1)
+train_cfg = dict(max_epochs=30, type='EpochBasedTrainLoop', val_interval=1)
 train_dataloader = dict(
     batch_sampler=dict(type='AspectRatioBatchSampler'),
     batch_size=4,
     dataset=dict(
-        ann_file='train/_annotations.coco.json',
-        data_prefix=dict(img='train/'),
-        data_root='/workspace/kouyou/datasets/rf100_domain/microscopic/',
-        filter_cfg=dict(filter_empty_gt=False, min_size=32),
-        metainfo=dict(
-            classes=(
-                'close',
-                'open',
-                'Platelets',
-                'RBC',
-                'WBC',
-                'Ancylostoma Spp',
-                'Ascaris Lumbricoides',
-                'Enterobius Vermicularis',
-                'Fasciola Hepatica',
-                'Hymenolepis',
-                'Schistosoma',
-                'Taenia Sp',
-                'Trichuris Trichiura',
-                'celula',
-                '4-fold defect',
-                'Str_pne',
-                'dc',
-                'Mitosis',
-                'activated',
-                'non-activated',
-                'ballooning',
-                'fibrosis',
-                'inflammation',
-                'steatosis',
-                'thick-dark-mark',
-                'thick-light-mark',
-                'thin-dark-mark',
-                'thin-light-mark',
-            )),
-        pipeline=[
-            dict(type='LoadImageFromFile'),
-            dict(type='LoadAnnotations', with_bbox=True),
-            dict(prob=0.5, type='RandomFlip'),
+        datasets=[
             dict(
-                transforms=[
-                    [
-                        dict(
-                            keep_ratio=True,
-                            scales=[
-                                (
-                                    480,
-                                    1333,
-                                ),
-                                (
-                                    512,
-                                    1333,
-                                ),
-                                (
-                                    544,
-                                    1333,
-                                ),
-                                (
-                                    576,
-                                    1333,
-                                ),
-                                (
-                                    608,
-                                    1333,
-                                ),
-                                (
-                                    640,
-                                    1333,
-                                ),
-                                (
-                                    672,
-                                    1333,
-                                ),
-                                (
-                                    704,
-                                    1333,
-                                ),
-                                (
-                                    736,
-                                    1333,
-                                ),
-                                (
-                                    768,
-                                    1333,
-                                ),
-                                (
-                                    800,
-                                    1333,
-                                ),
+                ann_file='o365v1_train_odvg.json',
+                backend_args=None,
+                data_prefix=dict(img='train/'),
+                data_root='data/objects365v1/',
+                filter_cfg=dict(filter_empty_gt=False),
+                label_map_file='o365v1_label_map.json',
+                pipeline=[
+                    dict(backend_args=None, type='LoadImageFromFile'),
+                    dict(type='LoadAnnotations', with_bbox=True),
+                    dict(prob=0.5, type='RandomFlip'),
+                    dict(
+                        transforms=[
+                            [
+                                dict(
+                                    keep_ratio=True,
+                                    scales=[
+                                        (
+                                            480,
+                                            1333,
+                                        ),
+                                        (
+                                            512,
+                                            1333,
+                                        ),
+                                        (
+                                            544,
+                                            1333,
+                                        ),
+                                        (
+                                            576,
+                                            1333,
+                                        ),
+                                        (
+                                            608,
+                                            1333,
+                                        ),
+                                        (
+                                            640,
+                                            1333,
+                                        ),
+                                        (
+                                            672,
+                                            1333,
+                                        ),
+                                        (
+                                            704,
+                                            1333,
+                                        ),
+                                        (
+                                            736,
+                                            1333,
+                                        ),
+                                        (
+                                            768,
+                                            1333,
+                                        ),
+                                        (
+                                            800,
+                                            1333,
+                                        ),
+                                    ],
+                                    type='RandomChoiceResize'),
                             ],
-                            type='RandomChoiceResize'),
-                    ],
-                    [
-                        dict(
-                            keep_ratio=True,
-                            scales=[
-                                (
-                                    400,
-                                    4200,
-                                ),
-                                (
-                                    500,
-                                    4200,
-                                ),
-                                (
-                                    600,
-                                    4200,
-                                ),
+                            [
+                                dict(
+                                    keep_ratio=True,
+                                    scales=[
+                                        (
+                                            400,
+                                            4200,
+                                        ),
+                                        (
+                                            500,
+                                            4200,
+                                        ),
+                                        (
+                                            600,
+                                            4200,
+                                        ),
+                                    ],
+                                    type='RandomChoiceResize'),
+                                dict(
+                                    allow_negative_crop=True,
+                                    crop_size=(
+                                        384,
+                                        600,
+                                    ),
+                                    crop_type='absolute_range',
+                                    type='RandomCrop'),
+                                dict(
+                                    keep_ratio=True,
+                                    scales=[
+                                        (
+                                            480,
+                                            1333,
+                                        ),
+                                        (
+                                            512,
+                                            1333,
+                                        ),
+                                        (
+                                            544,
+                                            1333,
+                                        ),
+                                        (
+                                            576,
+                                            1333,
+                                        ),
+                                        (
+                                            608,
+                                            1333,
+                                        ),
+                                        (
+                                            640,
+                                            1333,
+                                        ),
+                                        (
+                                            672,
+                                            1333,
+                                        ),
+                                        (
+                                            704,
+                                            1333,
+                                        ),
+                                        (
+                                            736,
+                                            1333,
+                                        ),
+                                        (
+                                            768,
+                                            1333,
+                                        ),
+                                        (
+                                            800,
+                                            1333,
+                                        ),
+                                    ],
+                                    type='RandomChoiceResize'),
                             ],
-                            type='RandomChoiceResize'),
-                        dict(
-                            allow_negative_crop=True,
-                            crop_size=(
-                                384,
-                                600,
-                            ),
-                            crop_type='absolute_range',
-                            type='RandomCrop'),
-                        dict(
-                            keep_ratio=True,
-                            scales=[
-                                (
-                                    480,
-                                    1333,
-                                ),
-                                (
-                                    512,
-                                    1333,
-                                ),
-                                (
-                                    544,
-                                    1333,
-                                ),
-                                (
-                                    576,
-                                    1333,
-                                ),
-                                (
-                                    608,
-                                    1333,
-                                ),
-                                (
-                                    640,
-                                    1333,
-                                ),
-                                (
-                                    672,
-                                    1333,
-                                ),
-                                (
-                                    704,
-                                    1333,
-                                ),
-                                (
-                                    736,
-                                    1333,
-                                ),
-                                (
-                                    768,
-                                    1333,
-                                ),
-                                (
-                                    800,
-                                    1333,
-                                ),
-                            ],
-                            type='RandomChoiceResize'),
-                    ],
+                        ],
+                        type='RandomChoice'),
+                    dict(
+                        min_gt_bbox_wh=(
+                            0.01,
+                            0.01,
+                        ),
+                        type='FilterAnnotations'),
+                    dict(
+                        max_tokens=256,
+                        num_sample_negative=85,
+                        tokenizer_name=
+                        '/workspace/kouyou/datasets/bert-base-uncased',
+                        type='RandomSamplingNegPos'),
+                    dict(
+                        meta_keys=(
+                            'img_id',
+                            'img_path',
+                            'ori_shape',
+                            'img_shape',
+                            'scale_factor',
+                            'flip',
+                            'flip_direction',
+                            'text',
+                            'custom_entities',
+                            'tokens_positive',
+                            'dataset_mode',
+                        ),
+                        type='PackDetInputs'),
                 ],
-                type='RandomChoice'),
-            dict(
-                meta_keys=(
-                    'img_id',
-                    'img_path',
-                    'ori_shape',
-                    'img_shape',
-                    'scale_factor',
-                    'flip',
-                    'flip_direction',
-                    'text',
-                    'custom_entities',
-                ),
-                type='PackDetInputs'),
+                return_classes=True,
+                type='ODVGDataset'),
         ],
-        return_classes=True,
-        type='CocoDataset'),
+        type='ConcatDataset'),
     num_workers=4,
     persistent_workers=True,
     sampler=dict(shuffle=True, type='DefaultSampler'))
 train_pipeline = [
-    dict(type='LoadImageFromFile'),
+    dict(backend_args=None, type='LoadImageFromFile'),
     dict(type='LoadAnnotations', with_bbox=True),
     dict(prob=0.5, type='RandomFlip'),
     dict(
@@ -886,6 +836,15 @@ train_pipeline = [
             ],
         ],
         type='RandomChoice'),
+    dict(min_gt_bbox_wh=(
+        0.01,
+        0.01,
+    ), type='FilterAnnotations'),
+    dict(
+        max_tokens=256,
+        num_sample_negative=85,
+        tokenizer_name='/workspace/kouyou/datasets/bert-base-uncased',
+        type='RandomSamplingNegPos'),
     dict(
         meta_keys=(
             'img_id',
@@ -897,6 +856,8 @@ train_pipeline = [
             'flip_direction',
             'text',
             'custom_entities',
+            'tokens_positive',
+            'dataset_mode',
         ),
         type='PackDetInputs'),
 ]
@@ -904,41 +865,10 @@ val_cfg = dict(type='ValLoop')
 val_dataloader = dict(
     batch_size=1,
     dataset=dict(
-        ann_file='valid/_annotations.coco.json',
+        ann_file='annotations/instances_val2017.json',
         backend_args=None,
-        data_prefix=dict(img='valid/'),
-        data_root='/workspace/kouyou/datasets/rf100_domain/microscopic/',
-        metainfo=dict(
-            classes=(
-                'close',
-                'open',
-                'Platelets',
-                'RBC',
-                'WBC',
-                'Ancylostoma Spp',
-                'Ascaris Lumbricoides',
-                'Enterobius Vermicularis',
-                'Fasciola Hepatica',
-                'Hymenolepis',
-                'Schistosoma',
-                'Taenia Sp',
-                'Trichuris Trichiura',
-                'celula',
-                '4-fold defect',
-                'Str_pne',
-                'dc',
-                'Mitosis',
-                'activated',
-                'non-activated',
-                'ballooning',
-                'fibrosis',
-                'inflammation',
-                'steatosis',
-                'thick-dark-mark',
-                'thick-light-mark',
-                'thin-dark-mark',
-                'thin-light-mark',
-            )),
+        data_prefix=dict(img='val2017/'),
+        data_root='/workspace/kouyou/datasets/coco2017/',
         pipeline=[
             dict(
                 backend_args=None,
@@ -975,7 +905,7 @@ val_dataloader = dict(
     sampler=dict(shuffle=False, type='DefaultSampler'))
 val_evaluator = dict(
     ann_file=
-    '/workspace/kouyou/datasets/rf100_domain/microscopic/valid/_annotations.coco.json',
+    '/workspace/kouyou/datasets/coco2017/annotations/instances_val2017.json',
     backend_args=None,
     format_only=False,
     metric='bbox',
@@ -989,4 +919,4 @@ visualizer = dict(
     vis_backends=[
         dict(type='LocalVisBackend'),
     ])
-work_dir = 'experiments/exp_021/microscopic_dithub_work_dir'
+work_dir = 'experiments/exp_021/videogames_dithub_zcoco'

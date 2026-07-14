@@ -16,15 +16,19 @@ randomness = dict(deterministic=False, seed=0)
 model = dict(
     type='DitHubGroundingDINO',
     dithub_classes={{_base_.class_name}},
-    # activation checkpointing を無効化 (数学的に同一。再入 backward が
-    # find_unused_parameters=True と両立しないため。GPU メモリは余裕あり)
-    encoder=dict(num_cp=0))
+    # 上流 (fairscale) の再入版 activation checkpointing を無効化する。
+    # 再入 backward は DDP のパラメータ二重マークを起こし、可変な使用パラメータ
+    # 集合 (クラス別 A) と両立しない。代わりに DitHubGroundingDINO 側で
+    # 非再入版 (torch, use_reentrant=False) を encoder_cp 層に掛け直す。
+    # 出力・勾配は checkpointing なしと数学的に同一 (検証済み)。
+    encoder=dict(num_cp=0),
+    encoder_cp=6)
 
 # フェーズ切替: 公式の等分規則 (学習量の半分) を epoch に写像
 custom_hooks = [dict(type='DitHubPhaseHook', warmup_epochs=10)]
 
 # specialization 中は選択されなかったクラスの A が不使用になるため必須
-# (num_cp=0 とセット。checkpointing 有効時は再入 backward と衝突する)
+# (上流 num_cp=0 + 非再入 checkpointing とセット。再入版とは両立しない)
 find_unused_parameters = True
 
 # 裁定④: 報告用 best は specialization 期 (ep11-20) から選ぶため、

@@ -103,6 +103,32 @@ specialization 中は選ばれたクラスの A のみが勾配を持ち、他�
 その iteration で不使用になるため、config で `find_unused_parameters=True` を
 設定する（若干のオーバーヘッドを許容）。
 
+### 3.7 activation checkpointing の掛け直し（2026-07-13 追記）
+
+上流 `grounding_dino_layers.py` の `num_cp` は fairscale の
+`checkpoint_wrapper`（再入版）を encoder の layers と fusion_layers に適用する。
+再入版は backward を二度走らせるため DDP がパラメータの ready を二重にマークし、
+`Expected to mark a variable ready only once` で落ちる。可変な使用パラメータ集合
+（クラス別 A）とは本質的に両立しない。
+
+対処として config では上流の `encoder=dict(num_cp=0)` で再入版を無効化し、
+`DitHubGroundingDINO._enable_checkpointing()` が PyTorch の非再入版
+（`torch.utils.checkpoint(..., use_reentrant=False)`、DDP 併用時の推奨実装）を
+encoder の先頭 `encoder_cp` 層（既定 6）の layers / fusion_layers / text_layers に
+掛け直す。`nn.Module` を入れ子にせず `forward` 属性のみを差し替えるため、
+state_dict のキーは変わらず既存 ckpt と互換である。
+
+数値検証（2026-07-13）: 同一初期値・同一入力で `encoder_cp` の 0 と 6 を比較し、
+loss は完全一致（差 0）、LoRA 勾配の最大絶対差は 1.1e-6（float32 の再計算に伴う
+丸めの範囲）、ピークメモリは 4375 MiB → 2595 MiB。したがって checkpointing の
+有無で学習結果は変わらない。
+
+**必要になった経緯**: 標準版の videogames のみ 87 クラスで `max_text_len=512` の
+ため、融合層の注意行列（画像トークン約 13000 × テキストトークン 512）が倍増し、
+checkpointing 無し（num_cp=0）では 40 GB を超えて CUDA OOM で落ちた。掛け直し後は
+8〜18 GB で収まる。他 5 ドメインは 256 トークンで影響を受けない。underwater と
+aerial は checkpointing 無しで学習済みだが、上記の数値同一性より再学習は不要。
+
 ## 4. ハイパーパラメータの決定表（ユーザー裁定 2026-07-12: 2 体制を両方実行）
 
 共通（両体制）: seed=0 明示、dn 有効（裁定②）、LoRA r=16 / alpha=8（scaling

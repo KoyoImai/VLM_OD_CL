@@ -12,11 +12,13 @@
 #      DitHubLinear へ差し替え (実質 encoder 全体 + memory_trans_fc)
 #   3. loss()/predict() で DitHubState にクラス選択を設定
 #   4. LoRA 以外の全パラメータを凍結
+#   5. encoder の activation checkpointing を非再入版で掛け直す (下記参照)
 
 import random
 
 import torch
 from torch import nn
+from torch.utils.checkpoint import checkpoint as _torch_checkpoint
 
 from mmdet.registry import MODELS
 from mmdet.models.layers.dithub_layers import (STATE, DecomposedMHA,
@@ -33,6 +35,31 @@ EXCLUDE_PREFIXES = ('backbone', 'language_model', 'text_feat_map', 'neck',
 OUT_MIN = 128
 
 
+def _wrap_non_reentrant(module: nn.Module) -> None:
+    """module.forward を非再入 activation checkpointing で包む.
+
+    上流 (grounding_dino_layers.py) の num_cp は fairscale の checkpoint_wrapper
+    を使うが、これは再入版で backward が二重に走るため、DDP のパラメータ ready
+    マークが二度立ち `Expected to mark a variable ready only once` で落ちる。
+    PyTorch の非再入版 (use_reentrant=False) は DDP 併用時に推奨される実装で、
+    出力・勾配は checkpointing なしと数学的に同一 (RNG 状態も復元される)。
+    さらに nn.Module を入れ子にせず forward だけ差し替えるため、state_dict の
+    キーが変わらず、既存 ckpt との互換性も保たれる。
+    """
+    if getattr(module, '_dithub_ckpt', False):
+        return
+    orig_forward = module.forward
+
+    def forward(*args, **kwargs):
+        if module.training and torch.is_grad_enabled():
+            return _torch_checkpoint(
+                orig_forward, *args, use_reentrant=False, **kwargs)
+        return orig_forward(*args, **kwargs)
+
+    module.forward = forward
+    module._dithub_ckpt = True
+
+
 @MODELS.register_module()
 class DitHubGroundingDINO(GroundingDINO):
     """MM-Grounding DINO に DitHub (クラス別 LoRA ライブラリ) を組み込んだ検出器.
@@ -43,11 +70,14 @@ class DitHubGroundingDINO(GroundingDINO):
         lora_r (int): LoRA rank。公式既定 16。
         lora_alpha (int): LoRA alpha。公式既定 8 (scaling = alpha/r = 0.5)。
         lambda_a (float): 式3 の融合係数。公式既定 0.3 (単発学習では不活性)。
+        encoder_cp (int): encoder の先頭何層に非再入 checkpointing を掛けるか。
+            上流の num_cp と同じ既定 6。config 側では上流の
+            ``encoder=dict(num_cp=0)`` で fairscale 版を無効化しておくこと。
     """
 
     def __init__(self, *args, dithub_classes, lora_r: int = 16,
                  lora_alpha: int = 8, lambda_a: float = 0.3,
-                 **kwargs) -> None:
+                 encoder_cp: int = 6, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         assert dithub_classes, 'dithub_classes must be a non-empty list'
         self.dithub_class_keys = [canonical_key(c) for c in dithub_classes]
@@ -55,8 +85,25 @@ class DitHubGroundingDINO(GroundingDINO):
         self._convert_text_attention()
         self.dithub_layer_names = self._apply_dithub(lora_r, lora_alpha)
         self._freeze_base()
+        self._enable_checkpointing(encoder_cp)
 
     # ---- 構築 ----------------------------------------------------------
+
+    def _enable_checkpointing(self, num_cp: int) -> None:
+        """encoder の先頭 num_cp 層に非再入 checkpointing を掛ける."""
+        if num_cp <= 0:
+            return
+        enc = self.encoder
+        assert not any(
+            type(m).__name__ == 'OffloadWrapper'
+            or 'checkpoint_wrapper' in type(m).__module__
+            for m in enc.layers), (
+                'fairscale の checkpoint_wrapper が既に適用されている。'
+                'config で encoder=dict(num_cp=0) を指定すること。')
+        for i in range(min(num_cp, len(enc.layers))):
+            _wrap_non_reentrant(enc.layers[i])
+            _wrap_non_reentrant(enc.fusion_layers[i])
+            _wrap_non_reentrant(enc.text_layers[i])
 
     def _convert_text_attention(self) -> None:
         """text_layers の nn.MultiheadAttention を q/k/v/o 分解型へ差し替える."""
