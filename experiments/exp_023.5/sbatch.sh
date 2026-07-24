@@ -41,6 +41,13 @@ RUN_STAGE="${RUN_STAGE:-all}"        # all|zeroshot|train|eval を train_val.sh 
 mkdir -p "$CACHE"
 cp -r "$HOME_DATA/rf100_domain" "$CACHE/"
 
+# ステージング検証（local_cache が動いているかをログに残す）
+echo "== local_cache staging =="
+echo "SLURM_JOB_ID = ${SLURM_JOB_ID}   CACHE = $CACHE"
+df -h /local_cache 2>/dev/null | tail -1
+du -sh "$CACHE"/* 2>/dev/null
+echo "=========================="
+
 # ② コンテナ起動 → train_val.sh 実行（--bind でパス間接化。config 無変更）
 singularity exec --nv \
   --bind "$REPO":/workspace/kouyou/mmdetection \
