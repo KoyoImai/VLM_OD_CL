@@ -19,9 +19,9 @@ exp_024／exp_025 をクラスタで本格実行する前に、**クラスタ側
 - 評価（適応）: `experiments/exp_023/configs/eval_underwater.py`
 - 評価（ZCOCO / COCO ゼロショット）: `configs/mm_grounding_dino/eval_base_coco.py`（ゼロショットは test.py の ckpt 引数に θ0 を渡すだけ）
 
-## 前提: θ0 のオフライン可用性
-base config の `load_from` は openmmlab の URL で、計算ノードがインターネット非接続だと取得に失敗する（学習・ゼロショット評価の両方に影響）。
-対処は config 無変更で行う: θ0 の `.pth` をホームに置き、(a) torch hub のキャッシュ（URL キーで参照される場所）に配置してURLロードをオフライン解決させる、または (b) `--cfg-options load_from=<path>` / test.py の ckpt 引数でパスを直接渡す。Tier 1 でこのロードが通ることを先に確認する。
+## 前提: θ0 の与え方（明示パス）
+計算ノードはネットワークに接続されているため、base config の `load_from`（openmmlab の URL）も backbone の init_cfg（Swin の GitHub URL）も、そのままダウンロードで解決できる（offline 由来の取得失敗は起きない）。
+そのうえで本実験は θ0 を明示パスで渡す方針を採る（config 無変更）: θ0 の `.pth` をホームに置き、`--cfg-options load_from=<path>` / test.py の ckpt 引数で直接指定する（`train_val.sh` の実装）。URL 可用性やキャッシュ状態に依存せず、どのノードでも同一の θ0 を確定的に読ませるため。Tier 1 ではこの `.pth` の存在を確認する。
 
 ## 参照アンカー（本環境の実測値）
 - **θ0 ゼロショット COCO: mAP 0.504**（`experiments/exp_001/coco_work_dir` 実測、`exp_001/outputs/notes.md`）。学習不要・θ0同一・評価決定的なので、**1エポック方針でも数値パリティの本命アンカー**。
@@ -37,7 +37,7 @@ base config の `load_from` は openmmlab の URL で、計算ノードがイン
 3. クラスタ側 COCO val の件数が本環境と一致: `instances_val2017.json` = 5000画像 / 80カテゴリ / 36781アノテーション。
 4. `Config.fromfile('.../fullft_replay_underwater.py')` がビルドでき、dataloader の各ソースのパスが bind 下で解決する（ファイル存在確認）。
 5. dataloader が 1 バッチ yield できる（現ドメイン4＋参照2 の混合が組める）。
-6. **θ0 がオフラインでロードできる**（上記「前提」の (a) or (b)）。ここが通らないと以降すべて動かない。
+6. **θ0 の `.pth` がホーム（bind 先 `/workspace/kouyou/ckpt`）に存在する**（上記「前提」）。`train_val.sh` はこのパスを明示的に渡すため、ファイルが在ればロードされる。無いと以降すべて動かない。
 
 ### Tier 2: 評価・学習（バッチジョブ, 案A の sbatch.sh / train_val.sh）
 0. **COCO ゼロショット（学習不要・最速の評価パリティ）**: θ0 を `eval_base_coco.py` で評価 → 本環境の **0.504** と照合。θ0ロード・ZCOCOバインド（`/dataset01/MSCOCO`）・評価経路を、学習コストゼロで一気に検証する。

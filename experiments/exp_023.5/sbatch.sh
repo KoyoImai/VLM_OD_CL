@@ -11,7 +11,7 @@
 #
 #   事前準備:
 #     - mkdir -p /home/kouyou/logs
-#     - θ0 を /home/kouyou/ckpt/ に配置（下記 URL を wget、README §2 参照。計算ノードはオフライン想定）
+#     - θ0 を /home/kouyou/ckpt/ に配置（下記 URL を wget、README §2 参照。train_val.sh が明示パスで渡す）
 #         https://download.openmmlab.com/mmdetection/v3.0/mm_grounding_dino/
 #           grounding_dino_swin-t_pretrain_obj365_goldg_grit9m_v3det/
 #           grounding_dino_swin-t_pretrain_obj365_goldg_grit9m_v3det_20231204_095047-b448804b.pth
@@ -49,9 +49,12 @@ du -sh "$CACHE"/* 2>/dev/null
 echo "=========================="
 
 # ② コンテナ起動 → train_val.sh 実行（--bind でパス間接化。config 無変更）
+#    各データソースを /workspace/kouyou/datasets 直下の独立した葉として bind する
+#    （親 datasets を丸ごと bind して入れ子にしない＝Tier1 で実証済みの構造に一致させる）。
+#    rf100 は local_cache から、o365/bert/coco はホーム・共有SSD から直接。
 singularity exec --nv \
   --bind "$REPO":/workspace/kouyou/mmdetection \
-  --bind "$CACHE":/workspace/kouyou/datasets \
+  --bind "$CACHE/rf100_domain":/workspace/kouyou/datasets/rf100_domain \
   --bind "$HOME_DATA/o365v1_stage":/workspace/kouyou/datasets/o365v1_stage \
   --bind "$HOME_DATA/bert-base-uncased":/workspace/kouyou/datasets/bert-base-uncased \
   --bind /dataset01/MSCOCO:/workspace/kouyou/datasets/coco2017 \

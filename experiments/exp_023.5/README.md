@@ -20,7 +20,7 @@
 ```bash
 mkdir -p /home/kouyou/logs /home/kouyou/ckpt
 
-# θ0（事前学習重み）を取得して配置（計算ノードはオフライン想定 → マスターノードで wget）
+# θ0（事前学習重み）を取得して配置（train_val.sh が load_from に明示パスで渡すため、ローカルに置く）
 cd /home/kouyou/ckpt
 wget https://download.openmmlab.com/mmdetection/v3.0/mm_grounding_dino/grounding_dino_swin-t_pretrain_obj365_goldg_grit9m_v3det/grounding_dino_swin-t_pretrain_obj365_goldg_grit9m_v3det_20231204_095047-b448804b.pth
 ```
