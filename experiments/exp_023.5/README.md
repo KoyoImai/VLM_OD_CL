@@ -26,7 +26,7 @@ wget https://download.openmmlab.com/mmdetection/v3.0/mm_grounding_dino/grounding
 ```
 
 前提（未了なら先に）:
-- データ転送（[README_cluster.md](../../README_cluster.md) §4）: `rf100_domain`, `o365v1_stage`
+- データ転送（[README_cluster.md](../../README_cluster.md) §4）: `rf100_domain`, `o365v1_stage`, **`bert-base-uncased`**（config の `lang_model_name` がローカル参照。約436MB）
 - コード同期（§3）: `cd /home/kouyou/VLM_OD_CL && git pull`
 - `.sif` 配置（§2）: `/home/kouyou/sif/docker-image-of-mmdetection4singularity.sif`
 
@@ -42,6 +42,7 @@ srun --partition=a6000_ada_interactive --gres=gpu:4 --pty bash -c '
     --bind /home/kouyou/VLM_OD_CL:/workspace/kouyou/mmdetection \
     --bind /home/kouyou/datasets/rf100_domain:/workspace/kouyou/datasets/rf100_domain \
     --bind /home/kouyou/datasets/o365v1_stage:/workspace/kouyou/datasets/o365v1_stage \
+    --bind /home/kouyou/datasets/bert-base-uncased:/workspace/kouyou/datasets/bert-base-uncased \
     --bind /dataset01/MSCOCO:/workspace/kouyou/datasets/coco2017 \
     --bind /home/kouyou/ckpt:/workspace/kouyou/ckpt \
     /home/kouyou/sif/docker-image-of-mmdetection4singularity.sif \

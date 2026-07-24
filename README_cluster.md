@@ -90,6 +90,7 @@ cd /home/kouyou/VLM_OD_CL && git pull
 |---|---|---|
 | rf100 3ドメイン | underwater 898M + electromagnetic 1.2G + videogames 680M（＋各 valid） | 約 2.8G |
 | o365（Objects365 v1） | リプレイ参照元。全データを事前転送（`train/` を丸ごと置く） | 46G（`train/`のみ。全体 111G） |
+| **bert-base-uncased** | config の `lang_model_name` がローカル参照する BERT（model+tokenizer） | 約 436 MB |
 | COCO2017 val（ZCOCO） | クラスタ共有SSD `/dataset01/MSCOCO` を利用（ホームに置かない） | 0（共有） |
 
 - **方針変更（2026-07-24）**: o365 は 1000枚パックを作らず、**全データを事前にホームへ転送**する（抽出スクリプト不要）。学習・評価で実際に読むのは参照バッファの 1000枚だけだが、config の `_o365_root` は o365 全体ツリー（`data_prefix='train/'`）を指すため、`train/` を丸ごと置いておけば config 無変更で解決する。
@@ -120,6 +121,14 @@ rsync -avh --progress --exclude '*.zip' \
   /data1/kouyou/datasets/o365v1_stage/ \
   kouyou@192.168.170.100:/home/kouyou/datasets/o365v1_stage/
 # ↑ zip 含む 111G を全部送るなら --exclude を外す
+```
+
+**bert-base-uncased（約436MB）**: config の `lang_model_name = '/workspace/kouyou/datasets/bert-base-uncased'` がローカル参照する。無いと model build で失敗する。
+
+```bash
+rsync -avh --progress \
+  /data1/kouyou/datasets/bert-base-uncased/ \
+  kouyou@192.168.170.100:/home/kouyou/datasets/bert-base-uncased/
 ```
 
 - 末尾スラッシュに注意：ソース `foo/` の**中身**を宛先 `foo/` 直下へ入れる。
@@ -198,6 +207,7 @@ singularity exec --nv \
   --bind "$REPO":/workspace/kouyou/mmdetection \
   --bind "$STAGE":/workspace/kouyou/datasets \
   --bind "$HOME_DATA/o365v1_stage":/workspace/kouyou/datasets/o365v1_stage \
+  --bind "$HOME_DATA/bert-base-uncased":/workspace/kouyou/datasets/bert-base-uncased \
   --bind /dataset01/MSCOCO:/workspace/kouyou/datasets/coco2017 \
   "$SIF" bash /workspace/kouyou/mmdetection/experiments/exp_024/train_val.sh "$METHOD"
 ```

@@ -11,6 +11,14 @@
 set -euo pipefail
 cd /workspace/kouyou/mmdetection
 
+# HuggingFace/transformers をオフライン＋書込可キャッシュに向ける（.sif 焼込みの
+# HF_HOME=/workspace/kouyou/datasets/HuggingFace は書込不可。BERT はローカルパスから読む）
+export HF_HOME=/tmp/hf
+export TRANSFORMERS_CACHE=/tmp/hf/hub
+export HF_HUB_OFFLINE=1
+export TRANSFORMERS_OFFLINE=1
+mkdir -p /tmp/hf/hub
+
 RUN_STAGE="${1:-all}"
 GPUS=4
 export PORT="${PORT:-29522}"          # 分散ポート（dist_* の既定 29500 と衝突回避）

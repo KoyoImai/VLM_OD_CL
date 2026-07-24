@@ -46,6 +46,7 @@ singularity exec --nv \
   --bind "$REPO":/workspace/kouyou/mmdetection \
   --bind "$CACHE":/workspace/kouyou/datasets \
   --bind "$HOME_DATA/o365v1_stage":/workspace/kouyou/datasets/o365v1_stage \
+  --bind "$HOME_DATA/bert-base-uncased":/workspace/kouyou/datasets/bert-base-uncased \
   --bind /dataset01/MSCOCO:/workspace/kouyou/datasets/coco2017 \
   --bind /home/kouyou/ckpt:/workspace/kouyou/ckpt \
   "$SIF" bash /workspace/kouyou/mmdetection/experiments/exp_023.5/train_val.sh "$RUN_STAGE"
