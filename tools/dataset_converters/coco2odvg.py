@@ -241,6 +241,19 @@ def dump_v3det_label_map(args):
         json.dump(o_dict, f)
 
 
+def dump_generic_label_map(args, cats_sorted):
+    # Build label map from the input json's categories (0-based, id-sorted).
+    o_dict = {str(i): c['name'] for i, c in enumerate(cats_sorted)}
+    base_dir = os.path.dirname(args.output if args.output else args.input)
+    if args.map_name:
+        output = os.path.join(base_dir, args.map_name)
+    else:
+        output = os.path.join(base_dir, 'label_map.json')
+    with open(output, 'w') as f:
+        json.dump(o_dict, f)
+    print('save label map to {}'.format(output))
+
+
 def coco2odvg(args):
     coco = COCO(args.input)
     cats = coco.loadCats(coco.getCatIds())
@@ -267,6 +280,12 @@ def coco2odvg(args):
         key_list = key_list_v3det
         val_list = val_list_v3det
         dump_v3det_label_map(args)
+    elif args.dataset == 'generic':
+        # RF100 等、任意の COCO データセット用。categories から動的に対応表を作る。
+        cats_sorted = sorted(cats, key=lambda c: c['id'])
+        val_list = [c['id'] for c in cats_sorted]
+        key_list = list(range(len(cats_sorted)))
+        dump_generic_label_map(args, cats_sorted)
 
     for img_id, img_info in tqdm(coco.imgs.items()):
         # missing images
@@ -338,8 +357,14 @@ if __name__ == '__main__':
         '-d',
         required=True,
         type=str,
-        choices=['coco', 'o365v1', 'o365v2', 'v3det'],
+        choices=['coco', 'o365v1', 'o365v2', 'v3det', 'generic'],
     )
+    parser.add_argument(
+        '--map-name',
+        type=str,
+        default=None,
+        help='label map output filename, used with -d generic '
+        '(e.g. underwater_label_map.json)')
     args = parser.parse_args()
 
     coco2odvg(args)

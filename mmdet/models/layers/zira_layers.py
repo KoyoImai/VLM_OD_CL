@@ -61,11 +61,19 @@ class ZiRaLinear(nn.Linear):
 
     @torch.no_grad()
     def rep_merge(self) -> None:
-        """公式 __rep__ と同一: LLRB へ融合し HLRB と s を再初期化する."""
+        """公式 __rep__ と同一: LLRB へ融合し HLRB と s "のみ" 再初期化する.
+
+        注意: init_rdb() は LLRB も 0 に戻すため Rep+ で呼んではならない
+        （融合した過去適応が消える）。HLRB を 1e-8、scaling を 0.1 に戻し、
+        LLRB は融合結果（過去累積）を保持する。
+        """
         self.llrb.weight += self.scaling * self.hlrb.weight
         if self.llrb.bias is not None:
             self.llrb.bias += self.scaling.squeeze() * self.hlrb.bias
-        self.init_rdb()
+        nn.init.constant_(self.hlrb.weight, HLRB_INIT)
+        if self.hlrb.bias is not None:
+            nn.init.constant_(self.hlrb.bias, HLRB_INIT)
+        self.scaling.fill_(SCALING_INIT)
 
     def forward(self, x: Tensor) -> Tensor:
         base = F.linear(x, self.weight, self.bias)
@@ -112,10 +120,15 @@ class ZiRaConvRDB(nn.Module):
 
     @torch.no_grad()
     def rep_merge(self) -> None:
+        # Rep+: LLRB へ融合し HLRB と scaling のみ再初期化（LLRB は保持）。
+        # init_rdb() は LLRB も 0 に戻すため呼ばない。
         self.llrb.weight += self.scaling * self.hlrb.weight
         if self.llrb.bias is not None:
             self.llrb.bias += self.scaling.squeeze() * self.hlrb.bias
-        self.init_rdb()
+        nn.init.constant_(self.hlrb.weight, HLRB_INIT)
+        if self.hlrb.bias is not None:
+            nn.init.constant_(self.hlrb.bias, HLRB_INIT)
+        self.scaling.fill_(SCALING_INIT)
 
     def forward(self, x: Tensor) -> Tensor:
         branch = self.scaling * self.hlrb(x)

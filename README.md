@@ -112,6 +112,50 @@ Roboflow100（RF100）の100データセットを，7つのドメインに分類
 ### 補足
  - videogames と real world はクラス数が多く，MM-Grouding DINOが対応可能なテキストトークン数（256）に収まりきらないため，学習と評価がうまくできない可能性がある． `max_text_len=512`に変更して学習を行った場合，videogamesでも学習がうまくいく．
 
+## ODinW-13 と RF100 ドメインの対応（調査記録 2026-07-20）
+
+既存の VLM 物体検出継続学習手法（ZiRa, DitHub）は **ODinW-13**（Object Detection in the Wild の13データセット版）で評価されている．本プロジェクトの RF100 7ドメイン設定との重なりを把握するため，ODinW-13 の各データセットを RF100 の7ドメインへ割り当てて調査した．
+
+**ODinW-13 と RF100 の関係（重要）：** 両者は同じ Roboflow 由来だが**独立に作られた別ベンチマークであり，ODinW-13 は RF100 の部分集合ではない**．ODinW-13 の13個のうち RF100 の100データセットに実在するのは 2個のみ（Aquarium → RF100 `aquarium-qlnqy`，Thermal Dogs and People → RF100 `thermal-dogs-and-people-x6ejw`）．残り11個（Pascal VOC, Aerial Maritime Drone 等）は RF100 に含まれない．ただし7ドメイン分類（一般カテゴリ）には全13個を割り当てられる．
+
+**ODinW-13 の13データセット → RF100 7ドメイン割り当て：**
+
+| ODinW-13 データセット | 内容 | モダリティ | 割当ドメイン | RF100内に実在 |
+|---|---|---|---|:---:|
+| Aerial Maritime Drone | ドローン俯瞰（船・車・桟橋） | 航空RGB | Aerial | 否 |
+| Aquarium | 水槽の魚・クラゲ等 | RGB | Underwater | 是 (`aquarium-qlnqy`) |
+| Cottontail Rabbits | 野生ウサギ | RGB | Real World | 否 |
+| Egohands | 一人称視点の手 | RGB | Real World | 否 |
+| Mushrooms | 野外のキノコ（マクロ撮影） | RGB | Real World | 否 |
+| Packages | 配達荷物 | RGB | Real World | 否 |
+| Pascal VOC | 一般物体20クラス | RGB | Real World | 否 |
+| Pistols | 拳銃 | RGB | Real World | 否 |
+| Pothole | 路面の穴 | RGB | Real World | 否 |
+| Raccoon | アライグマ | RGB | Real World | 否 |
+| Shellfish | 甲殻類（陸上撮影が主） | RGB | Real World | 否 |
+| Thermal Dogs and People | サーマル画像 | 熱赤外 | Electromagnetic | 是 (`thermal-dogs-and-people-x6ejw`) |
+| Vehicles (OpenImages) | 車両 | RGB | Real World | 否 |
+
+**逆引き（各 RF100 ドメインに ODinW-13 が存在するか）：**
+
+| RF100 ドメイン | 対応する ODinW-13 |
+|---|---|
+| Aerial | Aerial Maritime Drone |
+| Videogames | **なし** |
+| Microscopic | **なし** |
+| Underwater | Aquarium |
+| Documents | **なし** |
+| Electromagnetic | Thermal Dogs and People |
+| Real World | 10個（Rabbits, Egohands, Mushrooms, Packages, VOC, Pistols, Pothole, Raccoon, Shellfish, Vehicles） |
+
+**要点：** ODinW-13（＝ZiRa/DitHub が replay-free での評価を行った領域）は，7ドメインのうち Aerial・Underwater・Electromagnetic・Real World の4つを被覆し，**Videogames・Microscopic・Documents には一つも対応データセットが無い**．Real World が10/13 を占める．
+
+**注意（交絡）：** (a) ドメインカテゴリの重なりは難度の一致を意味しない（ODinW-13 の Aquarium は単一・7クラス，本プロジェクトの underwater は複数統合・28クラス）．(b) 「ODinW-13 に無い」は「Grounding DINO の事前学習分布から遠い」と同義ではない．Grounding DINO の事前学習は Obj365+GoldG+GRIT+V3Det であり ODinW ではないため，ODinW-13 の被覆は「replay-free 手法が成功を実証済みの領域」の代理指標であって，事前学習からの距離とは別軸．
+
+**未確認事項：** RF100 の underwater / electromagnetic 統合に，ODinW-13 と同一の `aquarium-qlnqy` / `thermal-dogs-and-people-x6ejw` が含まれるかは未確認（同一 Roboflow プロジェクト由来だが前処理・split は異なり得る）．Shellfish（Real World / Underwater）と Mushrooms（Real World / Microscopic）の割り当ては撮影モダリティ（通常RGB）に基づく判断で，RF100 公式の分類ではない．
+
+**出典：** [RF100 論文 arXiv:2211.13523](https://arxiv.org/abs/2211.13523) ／ [RF100 データセット一覧 CSV](https://raw.githubusercontent.com/roboflow/roboflow-100-benchmark/main/metadata/datasets_stats.csv) ／ [ODinW-13 データセット（DeepWiki, microsoft/GLIP）](https://deepwiki.com/microsoft/GLIP/4.3-odinw-13-datasets)
+
 ## 各ドメインのデータセットで学習
 
 ドメインごとに分割・統合したデータセットで学習を実行する．
