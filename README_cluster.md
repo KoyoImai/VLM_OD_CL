@@ -23,7 +23,7 @@
 ユーザー名`kouyou`で，ディレクトリ構成は以下の通り．
 ```
 /home/kouyou/
-├── mmdetection/                     # 本 repo（git clone / pull で同期）
+├── VLM_OD_CL/                       # 本 repo（git clone / pull で同期。remote 名 = VLM_OD_CL）
 ├── datasets/
 │   ├── rf100_domain/                # rf100 各ドメイン（本環境からコピー）
 │   └── o365v1_stage/Objects365_v1/2019-08-02/train/    # o365 全体を事前転送（zip 除外可）
@@ -74,7 +74,7 @@ singularity build --fakeroot docker-image-of-mmdetection4singularity.sif docker-
 git add -A && git commit -m "..." && git push
 
 # クラスタのマスターノードで
-cd /home/kouyou/mmdetection && git pull
+cd /home/kouyou/VLM_OD_CL && git pull
 ```
 
 **前提整備**: 現状 `experiments/` に work_dir・checkpoint が約321G あり，そのままでは git に載らない．
@@ -182,7 +182,7 @@ set -e
 
 # 実行時に使う変数は #SBATCH ブロックの後（本文）で定義する
 HOME_DATA=/home/kouyou/datasets
-REPO=/home/kouyou/mmdetection
+REPO=/home/kouyou/VLM_OD_CL
 SIF=/home/kouyou/sif/docker-image-of-mmdetection4singularity.sif
 STAGE=/local_cache/${SLURM_JOB_ID}/datasets
 METHOD="${1:-fullft_replayfree}"     # train_val.sh へ渡す手法識別（exp_024/025）

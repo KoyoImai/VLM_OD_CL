@@ -32,7 +32,7 @@
 set -e
 
 HOME_DATA=/home/kouyou/datasets
-REPO=/home/kouyou/mmdetection
+REPO=/home/kouyou/VLM_OD_CL          # クラスタ上の repo クローン先（git remote 名 = VLM_OD_CL）
 SIF=/home/kouyou/sif/docker-image-of-mmdetection4singularity.sif
 CACHE=/local_cache/${SLURM_JOB_ID}/datasets
 RUN_STAGE="${RUN_STAGE:-all}"        # all|zeroshot|train|eval を train_val.sh へ渡す

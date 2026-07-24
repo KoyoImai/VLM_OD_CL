@@ -6,7 +6,7 @@
 #   例（マスターノードで）:
 #     srun --partition=a6000_ada_interactive --gres=gpu:4 --pty bash -c '
 #       singularity exec --nv \
-#         --bind /home/kouyou/mmdetection:/workspace/kouyou/mmdetection \
+#         --bind /home/kouyou/VLM_OD_CL:/workspace/kouyou/mmdetection \
 #         --bind /home/kouyou/datasets/rf100_domain:/workspace/kouyou/datasets/rf100_domain \
 #         --bind /home/kouyou/datasets/o365v1_stage:/workspace/kouyou/datasets/o365v1_stage \
 #         --bind /dataset01/MSCOCO:/workspace/kouyou/datasets/coco2017 \
