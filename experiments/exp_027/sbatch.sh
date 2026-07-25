@@ -41,13 +41,41 @@ SIF=/home/kouyou/sif/docker-image-of-mmdetection4singularity.sif
 CACHE=/local_cache/${SLURM_JOB_ID}/datasets
 RUN_STAGE="${RUN_STAGE:-all}"
 
-# ① rf100 のみ local_cache へステージング（毎バッチ大量に読むため高速SSDへ）。
+# ⓪ 実行環境の記録（失敗しても必ずログに残るよう、他の処理より先に出す）
+#    2026-07-25 に「mkdir: cannot create directory '/local_cache': Permission denied」で
+#    落ちた際、mkdir が最初の処理だったためジョブIDもノード名もログに残らなかった。
+echo "========== exp_027 job info =========="
+echo "hostname        = $(hostname)"
+echo "SLURM_JOB_ID    = ${SLURM_JOB_ID:-<未設定>}"
+echo "SLURM_NODELIST  = ${SLURM_JOB_NODELIST:-<未設定>}"
+echo "RUN_STAGE       = $RUN_STAGE"
+echo "date            = $(date '+%F %T')"
+ls -ld /local_cache 2>&1 | sed 's/^/local_cache    : /'
+echo "======================================"
+
+# ⓪-2 local_cache の可用性チェック
+#    /local_cache/${SLURM_JOB_ID} は「割り当てられた計算ノード上に Slurm が自動作成する」
+#    一時ディレクトリで、ジョブ終了時に消える（doc_cluster_manual/pages/Usage_MountLocalCache.md）。
+#    存在しない場合、mkdir は / への書き込みを試みて Permission denied になる。
+#    local_cache を使わない迂回は行わない（2026-07-25 ユーザー指示。指定がない限り禁止）。
+if [ -z "${SLURM_JOB_ID:-}" ]; then
+  echo "ERROR: SLURM_JOB_ID が未設定です。sbatch 経由で実行してください:"
+  echo "         RUN_STAGE=debug sbatch experiments/exp_027/sbatch.sh"
+  exit 1
+fi
+if [ ! -d /local_cache ]; then
+  echo "ERROR: このノード（$(hostname)）に /local_cache がありません。"
+  echo "       上の job info ブロックのノード名を確認し、ノード固有の問題かを切り分けること。"
+  exit 1
+fi
+
+# ① rf100 を local_cache へステージング（毎バッチ大量に読むため高速SSDへ）。
 #    o365 は参照バッファ 1,000 枚しか読まないのでホームから直接 bind する。
 mkdir -p "$CACHE"
 cp -r "$HOME_DATA/rf100_domain" "$CACHE/"
 
 echo "== local_cache staging =="
-echo "SLURM_JOB_ID = ${SLURM_JOB_ID}   CACHE = $CACHE   RUN_STAGE = $RUN_STAGE"
+echo "CACHE = $CACHE"
 df -h /local_cache 2>/dev/null | tail -1
 du -sh "$CACHE"/* 2>/dev/null
 echo "=========================="
