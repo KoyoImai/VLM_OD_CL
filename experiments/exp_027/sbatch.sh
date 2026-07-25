@@ -21,9 +21,17 @@
 #     読み込むのは参照バッファの 1,000 枚のみで回数が少ないため、local_cache には置かず
 #     ホームから直接 bind する（2026-07-24 ユーザー決定・exp_023.5 と同方針）。
 #     転送漏れは RUN_STAGE=debug で検出する。
+#
+#   ★ node03 の除外（2026-07-25）: ジョブ 20510・20521 が node03 に割り当てられ、
+#     「mkdir: cannot create directory '/local_cache': Permission denied」で即失敗した。
+#     /local_cache/<ジョブID> は Slurm の prolog が作るが、node03 ではそれが用意されない。
+#     node04/05/06 では同一スクリプトが正常動作している（exp_023.5・exp_024/025/026 の実績）。
+#     node03 が復旧したら下の --exclude 行を削除すること。
+#     詳細: experiments/exp_027/troubleshooting_local_cache.md
 # =============================================================================
 #SBATCH --job-name=exp027_replay
 #SBATCH --partition=a6000_ada
+#SBATCH --exclude=node03              # node03 は /local_cache が無く mkdir で落ちる（2026-07-25）
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=64            # node01-04 は 64 スレッド。≤64
 #SBATCH --time=120:00:00              # 段階分割前提。上限168hに対し余裕を確保
@@ -41,41 +49,13 @@ SIF=/home/kouyou/sif/docker-image-of-mmdetection4singularity.sif
 CACHE=/local_cache/${SLURM_JOB_ID}/datasets
 RUN_STAGE="${RUN_STAGE:-all}"
 
-# ⓪ 実行環境の記録（失敗しても必ずログに残るよう、他の処理より先に出す）
-#    2026-07-25 に「mkdir: cannot create directory '/local_cache': Permission denied」で
-#    落ちた際、mkdir が最初の処理だったためジョブIDもノード名もログに残らなかった。
-echo "========== exp_027 job info =========="
-echo "hostname        = $(hostname)"
-echo "SLURM_JOB_ID    = ${SLURM_JOB_ID:-<未設定>}"
-echo "SLURM_NODELIST  = ${SLURM_JOB_NODELIST:-<未設定>}"
-echo "RUN_STAGE       = $RUN_STAGE"
-echo "date            = $(date '+%F %T')"
-ls -ld /local_cache 2>&1 | sed 's/^/local_cache    : /'
-echo "======================================"
-
-# ⓪-2 local_cache の可用性チェック
-#    /local_cache/${SLURM_JOB_ID} は「割り当てられた計算ノード上に Slurm が自動作成する」
-#    一時ディレクトリで、ジョブ終了時に消える（doc_cluster_manual/pages/Usage_MountLocalCache.md）。
-#    存在しない場合、mkdir は / への書き込みを試みて Permission denied になる。
-#    local_cache を使わない迂回は行わない（2026-07-25 ユーザー指示。指定がない限り禁止）。
-if [ -z "${SLURM_JOB_ID:-}" ]; then
-  echo "ERROR: SLURM_JOB_ID が未設定です。sbatch 経由で実行してください:"
-  echo "         RUN_STAGE=debug sbatch experiments/exp_027/sbatch.sh"
-  exit 1
-fi
-if [ ! -d /local_cache ]; then
-  echo "ERROR: このノード（$(hostname)）に /local_cache がありません。"
-  echo "       上の job info ブロックのノード名を確認し、ノード固有の問題かを切り分けること。"
-  exit 1
-fi
-
-# ① rf100 を local_cache へステージング（毎バッチ大量に読むため高速SSDへ）。
+# ① rf100 のみ local_cache へステージング（毎バッチ大量に読むため高速SSDへ）。
 #    o365 は参照バッファ 1,000 枚しか読まないのでホームから直接 bind する。
 mkdir -p "$CACHE"
 cp -r "$HOME_DATA/rf100_domain" "$CACHE/"
 
 echo "== local_cache staging =="
-echo "CACHE = $CACHE"
+echo "SLURM_JOB_ID = ${SLURM_JOB_ID}   CACHE = $CACHE   RUN_STAGE = $RUN_STAGE"
 df -h /local_cache 2>/dev/null | tail -1
 du -sh "$CACHE"/* 2>/dev/null
 echo "=========================="

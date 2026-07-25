@@ -63,6 +63,11 @@ ls -1 /home/kouyou/datasets/rf100_domain/     # underwater / electromagnetic / v
 
 ## 2. 実行手順
 
+> **node03 について（2026-07-25）**: node03 は `/local_cache` が用意されず、ステージングの
+> `mkdir` で即失敗する。`sbatch.sh` に `#SBATCH --exclude=node03` を入れて回避済みなので、
+> 投入時に指定する必要はない。node03 が復旧したらこの行を削除すること。
+> 経緯は [troubleshooting_local_cache.md](./troubleshooting_local_cache.md) を参照。
+
 ### ステップ1: デバッグ実行（**必ず最初に1回**）
 
 本実験がクラスタで新しく必要とするのは「Objects365 のバッファ画像が読めること」だけ。
