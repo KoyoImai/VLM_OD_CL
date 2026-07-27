@@ -160,3 +160,8 @@ experiments/latex
 # Regenerate via experiments/exp_007/compute_gram.py.
 experiments/**/gram/
 *.pt
+# rsync 転送中の一時ファイル（.<元のファイル名>.<ランダム6文字>）
+# *.pth では拾えないため個別に指定する（2026-07-27）
+.*.pth.*
+.*.pth
+.rsync-partial/
