@@ -62,10 +62,15 @@ for dom in "${ORDER[@]}"; do
   # 既定は λ = 1.0 固定（2026-07-27 決定。design §4.5）。
   # CALIBRATE=1 を指定した場合のみ、参照ドリフト方式で校正する（§4.5 後半・参考）。
   if [ "${CALIBRATE:-0}" = "1" ]; then
-    ref="$REFDIR/${dom}_work_dir/epoch_20.pth"
+    reflast="$REFDIR/${dom}_work_dir/last_checkpoint"
+    if [ ! -f "$reflast" ]; then
+      echo "ERROR: λ 校正の参照 last_checkpoint がありません: $reflast"
+      echo "       exp_027（$COND）の $dom が未完了です。"
+      exit 1
+    fi
+    ref="$(cat "$reflast")"
     if [ ! -f "$ref" ]; then
       echo "ERROR: λ 校正の参照 ckpt が見つかりません: $ref"
-      echo "       exp_027（$COND）の $dom が未完了です。"
       exit 1
     fi
     calib="$OUT/calibration/${TAG}_${dom}.json"
@@ -85,6 +90,11 @@ for dom in "${ORDER[@]}"; do
     --cfg-options load_from="$teacher" model.teacher_ckpt="$teacher" \
                   model.kd.loss_weight="$lam" "${INITCFG_OPT[@]}"
 
+  if [ ! -f "$WD/last_checkpoint" ]; then
+    echo "ERROR: 学習が last_checkpoint を残していません: $WD"
+    echo "       学習が正常終了したかを確認してください。"
+    exit 1
+  fi
   last="$(cat "$WD/last_checkpoint")"
   echo "[$EXP][$TAG][$dom] last ckpt: $last"
 

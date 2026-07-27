@@ -33,6 +33,7 @@ design: experiments/exp_028/design.md §4
 """
 import copy
 import functools
+import os.path as osp
 from typing import Dict, List, Optional, Union
 
 import torch
@@ -117,9 +118,13 @@ class KDGroundingDINO(GroundingDINO):
 
     # -------------------------------------------------------------- 教師の構築
     def init_weights(self) -> None:
-        super().init_weights()
+        # 早期 return は super() の**前**に置く。GroundingDINO.init_weights は
+        # mmengine の _is_init ガードの外で xavier 初期化を無条件に行うため、
+        # 2回目の呼び出しで text_feat_map / encoder / decoder が再初期化され、
+        # θ^S != θ^T になってしまう（2026-07-27 の検証で検出）。
         if self._teacher is not None:
             return
+        super().init_weights()
         assert self.teacher_ckpt is not None, \
             'teacher_ckpt が未指定です（ドライバが前ドメインの last を渡します）'
         teacher = copy.deepcopy(self)  # hook 登録前に複製する
@@ -130,8 +135,15 @@ class KDGroundingDINO(GroundingDINO):
             print_log(
                 f'[KDGroundingDINO] 教師から activation checkpoint の '
                 f'forward 差し替えを {n} 箇所解除しました', logger='current')
-        load_checkpoint(
+        ckpt = load_checkpoint(
             teacher, self.teacher_ckpt, map_location='cpu', logger='current')
+        # load_checkpoint は strict=False。欠落があると学生の初期値が黙って
+        # 残るため、教師の全キーが ckpt に存在することを明示的に確認する。
+        _sd = ckpt.get('state_dict', ckpt)
+        _missing = set(teacher.state_dict()) - set(_sd)
+        assert not _missing, (
+            '教師の重みに欠落があります（{} 件）: {} ... / ckpt={}'.format(
+                len(_missing), sorted(_missing)[:3], self.teacher_ckpt))
         teacher.requires_grad_(False)
         teacher.eval()
         object.__setattr__(self, '_teacher', teacher)
@@ -203,14 +215,22 @@ class KDGroundingDINO(GroundingDINO):
     def _teacher_features(self, batch_inputs: Tensor, prompts: List[str],
                           batch_data_samples: SampleList) -> Dict:
         t = self._teacher
+        tg = self.kd_targets
+        need_fus = 'fus' in tg
+        need_img = need_fus or 'img' in tg      # 融合後は画像特徴を入力に取る
+        need_txt = need_fus or 'txt' in tg      # 同上（テキスト側）
         feats: Dict = {}
-        text_dict = t.language_model(prompts)
-        if t.text_feat_map is not None:
-            text_dict['embedded'] = t.text_feat_map(text_dict['embedded'])
-        visual_features = t.extract_feat(batch_inputs)
-        feats['img'] = visual_features
-        feats['txt'] = text_dict['embedded']
-        if 'fus' in self.kd_targets:
+        text_dict = None
+        if need_txt:
+            text_dict = t.language_model(prompts)
+            if t.text_feat_map is not None:
+                text_dict['embedded'] = t.text_feat_map(text_dict['embedded'])
+            feats['txt'] = text_dict['embedded']
+        visual_features = None
+        if need_img:
+            visual_features = t.extract_feat(batch_inputs)
+            feats['img'] = visual_features
+        if need_fus:
             enc_in, _ = t.pre_transformer(visual_features, batch_data_samples)
             enc = t.forward_encoder(**enc_in, text_dict=text_dict)
             feats['mem'] = enc['memory']
@@ -246,7 +266,11 @@ class KDGroundingDINO(GroundingDINO):
                 diag['kd_txt'] = v.detach()
         if 'fus' in self.kd_targets:
             # memory_mask は True がパディング。有効位置はその否定。
-            mem_valid = s['mem_mask'][buf].logical_not()
+            # バッチ内の全画像が同一形状のとき pre_transformer は mask を作らず
+            # memory_mask=None を返す（deformable_detr.py:159-160, 208-211）。
+            # その場合は全位置が有効。
+            mm = s['mem_mask']
+            mem_valid = None if mm is None else mm[buf].logical_not()
             l_img = self.kd_loss.seq_loss(
                 f32(s['mem'][buf]), f32(t['mem'][buf]), mem_valid)
             l_txt = self.kd_loss.seq_loss(
@@ -261,6 +285,37 @@ class KDGroundingDINO(GroundingDINO):
                 diag['kd_fus_txt'] = l_txt.mean().detach()
         return torch.stack(terms).mean()
 
+    # ------------------------------------------------------ バッファ位置の検査
+    @staticmethod
+    def _assert_buffer_slice(batch_data_samples: SampleList, bs: int,
+                             n: int) -> None:
+        """バッチ末尾 n 件が本当にバッファ由来かを毎イテレーション検査する。
+
+        位置ベースの特定は `MultiSourceSampler` がソース順に添字を連結すること
+        （`multi_source_sampler.py:123-134`）に依存する。この前提は次の場合に
+        **無警告で崩れる**（2026-07-27 の検証で指摘）。
+
+          - `train_dataloader.batch_sampler` に `AspectRatioBatchSampler` が
+            入る（継承元の事前学習 config は設定している。現在は `_delete_=True`
+            で消えているが、復活すると 1 バッチが複数 sampler バッチの断片で
+            構成される）
+          - config の `datasets=[現在, 参照, 過去]` の並びを変える
+
+        現在ドメインとバッファは必ず別のディレクトリに置かれる（バッファは
+        Objects365 か**過去**ドメインで、現在ドメインとは一致しない）ため、
+        画像の親ディレクトリが重なっていないことで検査できる。
+        """
+        if n <= 0 or bs <= n:
+            return
+        dirs = [osp.dirname(s.img_path) for s in batch_data_samples]
+        cur, bufd = set(dirs[:bs - n]), set(dirs[bs - n:])
+        overlap = cur & bufd
+        assert not overlap, (
+            'バッファ位置の前提が崩れています（末尾 {} 件がバッファ由来では '
+            'ありません）。現在ドメインとバッファが同じディレクトリを共有: {}。'
+            'train_dataloader.batch_sampler や datasets の並びを確認してください。'
+        ).format(n, sorted(overlap))
+
     # -------------------------------------------------------------------- loss
     def loss(self, batch_inputs: Tensor,
              batch_data_samples: SampleList) -> Union[dict, list]:
@@ -268,6 +323,10 @@ class KDGroundingDINO(GroundingDINO):
         object.__setattr__(self, '_kd_capture', True)
         try:
             losses = super().loss(batch_inputs, batch_data_samples)
+        except BaseException:
+            # 例外時もキャッシュを落とす（学習グラフを掴んだまま残さない）
+            object.__setattr__(self, '_kd_cache', {})
+            raise
         finally:
             object.__setattr__(self, '_kd_capture', False)
 
@@ -279,6 +338,7 @@ class KDGroundingDINO(GroundingDINO):
         bs = batch_inputs.shape[0]
         n = min(self.num_buffer_per_batch, bs)
         buf = slice(bs - n, bs)
+        self._assert_buffer_slice(batch_data_samples, bs, n)
 
         t = self._teacher_features(batch_inputs, s['prompts'],
                                    batch_data_samples)

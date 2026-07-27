@@ -64,7 +64,11 @@ def main():
     model.init_weights()                     # 教師を構築（θ^T をロード）
     load_checkpoint(model, args.student, map_location='cpu', logger='current')
 
-    loader = Runner.build_dataloader(cfg.train_dataloader)
+    # seed を明示しないと mmengine が sync_random_seed() にフォールバックし、
+    # 同じ ckpt でも λ が再現しない（design §4.5 手順2 の「seed 固定」）。
+    loader = Runner.build_dataloader(
+        cfg.train_dataloader,
+        seed=cfg.get('randomness', {}).get('seed', 0))
     it = iter(loader)
 
     # プロンプト文字列を捕捉する（教師にも同じ文字列を渡すため）
