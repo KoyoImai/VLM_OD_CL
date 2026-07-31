@@ -38,6 +38,7 @@ from typing import Dict, List, Optional, Union
 
 import torch
 import torch.nn.functional as F
+from mmengine import dist
 from mmengine.logging import print_log
 from mmengine.runner.checkpoint import load_checkpoint
 from torch import Tensor
@@ -110,6 +111,14 @@ class KDGroundingDINO(GroundingDINO):
         self.kd_targets = targets
         self.kd_loss = MODELS.build(kd['loss'])
         self.kd_weight = float(kd['loss_weight'])
+        # 重みの決め方（design exp_032 §5）
+        #   'const' : loss_weight をそのまま使う（exp_028〜031。既定）
+        #   'ratio' : c_t = target_ratio * L_det / L_KD を毎イテレーション計算し、
+        #             蒸留損失の値が検出損失の target_ratio 倍になるようにする
+        self.kd_weight_mode = kd.get('weight_mode', 'const')
+        assert self.kd_weight_mode in ('const', 'ratio'), self.kd_weight_mode
+        self.kd_target_ratio = float(kd.get('target_ratio', 0.1))
+        self.kd_max_weight = float(kd.get('max_weight', 100.0))
         self.num_buffer_per_batch = int(kd.get('num_buffer_per_batch', 2))
         self.teacher_ckpt = teacher_ckpt
         object.__setattr__(self, '_teacher', None)
@@ -285,6 +294,22 @@ class KDGroundingDINO(GroundingDINO):
                 diag['kd_fus_txt'] = l_txt.mean().detach()
         return torch.stack(terms).mean()
 
+    # ---------------------------------------------------------- 検出損失の合計
+    @staticmethod
+    def _det_loss_sum(losses: dict) -> Tensor:
+        """mmengine の parse_losses と同じ集計（キーに 'loss' を含む全項目の和）。
+
+        `loss_kd` と診断値（キー名に 'loss' を含まない）は除かれる。補助デコーダ層
+        （`d0.loss_*`）と DN 損失も検出損失に含まれる。
+        """
+        total = None
+        for k, v in losses.items():
+            if 'loss' not in k or k == 'loss_kd':
+                continue
+            x = v.mean() if isinstance(v, Tensor) else sum(y.mean() for y in v)
+            total = x if total is None else total + x
+        return total
+
     # ------------------------------------------------------ バッファ位置の検査
     @staticmethod
     def _assert_buffer_slice(batch_data_samples: SampleList, bs: int,
@@ -347,7 +372,28 @@ class KDGroundingDINO(GroundingDINO):
         # mmengine の parse_losses の合計対象から外れ、ログにのみ残る。
         diag: Dict[str, Tensor] = {}
         kd = self._kd_losses(s, t, img_masks, buf, diag=diag)
-        losses['loss_kd'] = self.kd_weight * kd
+
+        if self.kd_weight_mode == 'const':
+            weight = self.kd_weight
+        else:
+            # c_t = target_ratio * L_det / L_KD（design exp_032 §1）
+            # 分散時は全 GPU で平均してから比を取る（§1.2）。
+            # clone してから all_reduce する（インプレース演算なので、detach した
+            # ビューを直接渡すと元の計算グラフのテンソルを書き換えてしまう）
+            det = self._det_loss_sum(losses).detach().clone()
+            kdv = kd.detach().clone()
+            if dist.is_distributed():
+                dist.all_reduce(det, 'mean')
+                dist.all_reduce(kdv, 'mean')
+            w = self.kd_target_ratio * det / (kdv + 1e-12)
+            clamped = bool(w > self.kd_max_weight)
+            w = torch.clamp(w, max=self.kd_max_weight)
+            weight = w.detach()            # stop-gradient（定数として扱う）
+            diag['kd_lambda'] = weight.clone()
+            diag['kd_clamped'] = weight.new_tensor(float(clamped))
+            diag['kd_ratio'] = (weight * kdv) / (det + 1e-12)
+
+        losses['loss_kd'] = weight * kd
         losses.update(diag)
         object.__setattr__(self, '_kd_cache', {})
         return losses
