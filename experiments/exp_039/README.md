@@ -12,15 +12,25 @@ exp_036 のジョブ・出力・データには一切触れない。
 |---|---|
 | config 12 本・ドライバ・sbatch・検証 | 生成済み（本環境） |
 | 実行前検証 6 項目 | 6/6 OK（2026-08-12、本環境） |
-| クラスタへの clone | 未実施 |
-| 学習・評価 | 未実行 |
+| クラスタへの clone | 実施済み（`/home/kouyou/VLM_OD_CL_exp039`） |
+| ZiRa | 投入済み |
+| DitHub | 2026-08-12 に DDP エラーで停止 → 修正済み。**§10 の手順で再投入する** |
 
-## 1. 本環境で push（clone 元を最新にする）
+## 1. 本環境で検証してから push（clone 元を最新にする）
+
+**実行前検証は本環境でしか行えない。**クラスタのマスターノードには mmdet の実行環境が無く
+（python はコンテナ内にしかない）、計算ノードへは Slurm 経由でしか入れないため、
+`check_exp039_setup.py` はクラスタでは動かない。**push する前に本環境で通しておく。**
+
+```bash
+cd /workspace/kouyou/mmdetection
+python experiments/exp_039/check_exp039_setup.py           # 5/5 OK
+python experiments/exp_039/check_exp039_setup.py --build   # 6/6 OK（GPU 1 枚）
+```
 
 クラスタが clone するのは remote なので、**先に push が要る**。
 
 ```bash
-cd /workspace/kouyou/mmdetection
 git status --short experiments/exp_039/
 git add experiments/exp_039/ && git commit -m "add exp_039"
 git push
@@ -194,3 +204,90 @@ ZiRa / DitHub。
 - `/local_cache/${SLURM_JOB_ID}` はジョブ終了で自動削除される。出力をそこに置かない。
 - exp_039 が終わって転送も済んだら、`/home/kouyou/VLM_OD_CL_exp039` は削除してよい
   （削除前チェックは [[../CLUSTER_RECLONE]] の §1・§2 に準じる）。
+
+## 10. 修正の取り込みと DitHub の再投入（2026-08-12）
+
+### 10.1 何が起きたか
+
+クラスタ 4GPU の DitHub 学習が次で落ちた。
+
+```
+RuntimeError: Expected to mark a variable ready only once
+Parameter at index 1051 with name encoder.layers.5.ffn.layers.1.shared_lora_b
+has been marked as ready twice.
+```
+
+原因は exp_039 の DitHub config に `encoder=dict(num_cp=0)` が無かったこと。事前学習
+config の既定 `num_cp=6` により fairscale の `checkpoint_wrapper`（**再入版**）が encoder に
+適用され、`DitHubGroundingDINO` が `encoder_cp=6` で掛ける非再入版と二重になった。再入版は
+backward が二度走るため DDP の ready マークが二度立つ。継承元を exp_023 の DitHub base から
+リプレイ・蒸留側へ変えた際に該当行が落ちていた。
+
+修正は 3 点（commit `a23a7ba`）。
+
+| | 内容 |
+|---|---|
+| config | `gen_configs.py` の `DITHUB_BODY` に `encoder=dict(num_cp=0)` を追加し 6 本を再生成 |
+| ガード | `dithub_grounding_dino.py` の二重適用 assertion を実効化。fairscale は `module.forward` を `functools.partial` に差し替えて同じモジュールを返すため型名では検出できず、従来のガードは発火していなかった |
+| 検証 | `check_exp039_setup.py` に `encoder.num_cp == 0` と `encoder_cp > 0` を追加 |
+
+`encoder_cp=6`（非再入版）はそのまま使う（exp_023 と同条件。design.md §7 の caveat を参照）。
+ZiRa は `encoder_cp` を使わないため影響を受けない。**走っているならそのまま継続してよい。**
+
+### 10.2 本環境で push
+
+```bash
+cd /workspace/kouyou/mmdetection
+git log --oneline -2          # 9c8ce62 / a23a7ba があること
+git push
+```
+
+### 10.3 クラスタで pull
+
+`VLM_OD_CL_exp039` は clone 済みなので、消さずに `git pull` でよい。変更したのは config と
+コードだけで `.pth` は触らないため、既存の出力とは競合しない。
+
+```bash
+ssh kouyou@192.168.170.100
+cd /home/kouyou/VLM_OD_CL_exp039
+git status --short            # 変更が無いこと（あれば先に確認）
+git pull
+git log --oneline -1          # 9c8ce62 と一致すること
+grep -n "num_cp" experiments/exp_039/configs/dithub_replay_underwater.py
+```
+
+`num_cp=0` が入っていること。
+
+### 10.4 検証してから再投入
+
+**`check_exp039_setup.py` はクラスタでは実行しない。**マスターノードには mmdet の実行環境が
+無く（python はコンテナ内にしかない）、計算ノードへは Slurm 経由でしか入れない。
+**実行前検証は §10.2 の push より前に本環境で済ませておく**（design.md §5.4）。
+
+クラスタ側で行うのは、pull が反映されたかのシェルでの確認だけでよい。
+
+```bash
+cd /home/kouyou/VLM_OD_CL_exp039
+grep -l "num_cp=0" experiments/exp_039/configs/dithub_*.py | wc -l    # 6
+```
+
+6 本すべてに入っていることを確認したら投入する。
+
+```bash
+REPO=/home/kouyou/VLM_OD_CL_exp039 sbatch experiments/exp_039/sbatch_dithub.sh
+squeue -u kouyou
+```
+
+失敗した DitHub の `*_work_dir` は融合まで到達していないので、ドライバの再開判定
+（融合済み ckpt の有無）ではスキップされない。t=1 から走り直す。
+
+### 10.5 同種の失敗を早く捕まえる
+
+DDP 特有の問題は単一 GPU の build 検証では出ない。投入後 10 分で最初の
+`Epoch(train)` 行が出ているかを確認する。
+
+```bash
+grep -m3 "Epoch(train)" /home/kouyou/logs/result_exp039_dithub_<JOBID>.txt
+```
+
+出ていなければ `error_exp039_dithub_<JOBID>.txt` を見る。
