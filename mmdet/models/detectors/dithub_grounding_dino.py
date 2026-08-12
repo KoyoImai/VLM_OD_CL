@@ -23,6 +23,7 @@ from torch.utils.checkpoint import checkpoint as _torch_checkpoint
 from mmdet.registry import MODELS
 from mmdet.models.layers.dithub_layers import (STATE, DecomposedMHA,
                                                DitHubLinear, canonical_key)
+from mmdet.models.layers.nodn_query_generator import NoDNQueryGenerator
 from .grounding_dino import GroundingDINO
 
 # 公式 get_lora_modules の除外規則 ('transformer.dec / bert / backbone /
@@ -33,6 +34,25 @@ EXCLUDE_PREFIXES = ('backbone', 'language_model', 'text_feat_map', 'neck',
                     'dn_query_generator', 'memory_trans_norm',
                     'data_preprocessor')
 OUT_MIN = 128
+
+
+def _build_nodn_query_generator(gen) -> NoDNQueryGenerator:
+    """既存の CdnQueryGenerator と同じ設定で NoDNQueryGenerator を作る.
+
+    state_dict のキー (dn_query_generator.label_embedding.weight) は同一のまま
+    保たれる。中身は dn を使わないため参照されない。
+    """
+    if gen.dynamic_dn_groups:
+        group_cfg = dict(dynamic=True, num_dn_queries=gen.num_dn_queries)
+    else:
+        group_cfg = dict(dynamic=False, num_groups=gen.num_groups)
+    return NoDNQueryGenerator(
+        num_classes=gen.num_classes,
+        embed_dims=gen.embed_dims,
+        num_matching_queries=gen.num_matching_queries,
+        label_noise_scale=gen.label_noise_scale,
+        box_noise_scale=gen.box_noise_scale,
+        group_cfg=group_cfg)
 
 
 def _wrap_non_reentrant(module: nn.Module) -> None:
@@ -77,11 +97,17 @@ class DitHubGroundingDINO(GroundingDINO):
 
     def __init__(self, *args, dithub_classes, lora_r: int = 16,
                  lora_alpha: int = 8, lambda_a: float = 0.3,
-                 encoder_cp: int = 6, **kwargs) -> None:
+                 encoder_cp: int = 6, use_dn: bool = True, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         assert dithub_classes, 'dithub_classes must be a non-empty list'
         self.dithub_class_keys = [canonical_key(c) for c in dithub_classes]
         self.lambda_a = lambda_a
+        self.use_dn = use_dn
+        # 公式 DitHub は build 時に dn_number=0 としており dn を使わない
+        # (groundingdino_dt.py:703)。既定 True は exp_021 / exp_023 の挙動を保つ。
+        if not use_dn:
+            self.dn_query_generator = _build_nodn_query_generator(
+                self.dn_query_generator)
         self._convert_text_attention()
         self.dithub_layer_names = self._apply_dithub(lora_r, lora_alpha)
         self._freeze_base()
@@ -167,6 +193,30 @@ class DitHubGroundingDINO(GroundingDINO):
         for m in self.modules():
             if isinstance(m, DitHubLinear):
                 m.enable_per_class(self.lambda_a, trained_keys)
+
+    def reinit_warmup_a(self) -> None:
+        """全 DitHubLinear の warmup_lora_a を kaiming で引き直す.
+
+        公式はタスクごとにモデルを作り直すため warmup_lora_a が毎回新しい
+        kaiming 初期値になる (per_class_lora_A と shared_lora_b だけが
+        TaskMemory から復元される)。本実装は前タスクのライブラリを load_from
+        するので、タスク開始時に明示的に引き直す。
+        """
+        for m in self.modules():
+            if isinstance(m, DitHubLinear):
+                m.reinit_warmup_a()
+
+    def set_phase(self, per_class_enabled: bool) -> None:
+        """フェーズフラグのみを設定する (A の融合は行わない).
+
+        逐次学習では前タスクのライブラリを load_from するため、checkpoint に
+        載っている `dithub_per_class_enabled=1` がそのまま次タスクへ持ち越され、
+        warmup が実行されないまま specialization から始まってしまう。
+        DitHubPhaseHook が学習開始時に本メソッドで明示的に初期化する。
+        """
+        for m in self.modules():
+            if isinstance(m, DitHubLinear):
+                m.set_per_class_enabled(per_class_enabled)
 
     # ---- クラス選択の設定 -------------------------------------------------
 

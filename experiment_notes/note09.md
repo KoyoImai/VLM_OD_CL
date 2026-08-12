@@ -1,0 +1,30 @@
+# 実験9
+
+## 位置付け
+LoRAの挙動確認
+LoRAを導入したMM-Grounding DINOをODinW-13で学習し，実装が正常か確認する．
+
+## 目的
+LoRAの挙動確認
+
+## 実験種別
+実装確認実験
+
+## 実験条件
+- LoRA A : Swin + BERT + text_feat_map + feature enhancer
+- LoRA B : Swin + text_feat_map + feature enhancer
+- LoRA C : Swin + BERT + text_feat_map + feature enhancer，学習率1e-4
+
+
+
+## 結果
+|                    |  pistols  |  PVOC  |  CoRa  |  Raccoon  |  VeOpIm  |  Packages  |  tDAP  |  pothole  |  EgoHaands  |  NoAmMu  |  AeMaDr  |  Aquarium  |  ShOpIm  |   Avg   |
+|--------------------|-----------|--------|--------|-----------|----------|------------|--------|-----------|-------------|----------|----------|------------|----------|---------|
+| zero-shot          | 0.6910    | 0.5660 | 0.7180 | 0.6640    | 0.5810   | 0.5780     | 0.5950 | 0.2820    | 0.5940      | 0.2190   | 0.1710   | 0.2650     | 0.5380   | 0.4971  |
+| LoRA A             | 0.1560    | 0.1100 | 0.4820 | 0.2500    | 0.0590   | 0.2750     | 0.2260 | 0.0850    | 0.2290      | 0.0610   | 0.0590   | 0.0210     | 0.1590   | 0.6466  |
+
+
+
+## 備考
+### 結果のディレクトリ
+exp_038

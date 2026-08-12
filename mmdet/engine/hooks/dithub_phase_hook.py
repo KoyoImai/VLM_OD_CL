@@ -41,6 +41,41 @@ class DitHubPhaseHook(Hook):
         runner.logger.info(
             '>>> DitHub: END WARMUP, START SPECIALIZATION PHASE <<<')
 
+    def before_train(self, runner):
+        """学習開始時にフェーズを現在の進捗から決め直す (2026-08-10 追加).
+
+        `dithub_per_class_enabled` は persistent buffer なので checkpoint に
+        載る。逐次学習で前タスクのライブラリを load_from すると 1 が読み込まれ、
+        そのタスクは warmup を一度も実行しないまま specialization で始まる。
+        その結果 warmup_lora_a は勾配を受けず、iter=max/2 の切替で全クラスの A が
+        「前タスクの warmup_lora_a」で上書きされ、それまでの学習が破棄される
+        （exp_023 で実測: t=2 の損失が切替直後に 10.12 -> 21.32）。
+
+        本フックは load_or_resume の後・学習ループの前に呼ばれるので、ここで
+        進捗からフェーズを決め直せば、新規タスクは必ず warmup から始まり、
+        途中再開は specialization を正しく引き継ぐ。
+        """
+        model = runner.model
+        if is_model_wrapper(model):
+            model = model.module
+        if self.warmup_iters is not None:
+            enabled = runner.iter >= self.warmup_iters
+        else:
+            enabled = runner.epoch >= self.warmup_epochs
+        model.set_phase(enabled)
+        # 公式はタスクごとにモデルを θ0 から作り直し、warmup_lora_a を復元しない
+        # (per_class_lora_A と shared_lora_b だけを TaskMemory から戻す)。
+        # 本実装は前タスクのライブラリを load_from するため、タスクの先頭
+        # (iter=0) では明示的に引き直して公式と揃える。途中再開では引き継ぐ。
+        reinit = runner.iter == 0
+        if reinit:
+            model.reinit_warmup_a()
+        phase = 'SPECIALIZATION' if enabled else 'WARMUP'
+        runner.logger.info(
+            f'>>> DitHub: phase initialized to {phase} '
+            f'(iter={runner.iter}, epoch={runner.epoch}), '
+            f'warmup_lora_a reinit={reinit} <<<')
+
     def before_train_epoch(self, runner):
         if self.warmup_epochs is not None and \
                 runner.epoch == self.warmup_epochs:
