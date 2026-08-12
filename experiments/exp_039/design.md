@@ -233,6 +233,18 @@ exp_023 の ZiRa / DitHub 用 config（replay / replayfree × 3 ドメイン、�
   合わせて dn を無効化したので、そちらとは条件が異なる。RF100 側の横並びを優先した。
 - 20 epoch は exp_023 の 2000/3000 iter より学習量が大きい（underwater で 790 iter × 20 =
   15,800 iter）。DitHub の warmup が 10 epoch = 約 7,900 iter と長くなる。
+- **DitHub の activation checkpointing が勾配を変える**（2026-08-12 実測）。
+  `encoder_cp=6`（非再入版）と `encoder_cp=0`（無し）を、同一バッチ・同一 seed・LoRA
+  パラメータを揃えて比較すると、損失はビット一致する一方で勾配が
+  `‖Δg‖/‖g‖ = 9.75e-02` 異なる。層別では encoder.layer0 が 8.87e-02、layer5 が 6.28e-03 と
+  **浅い層ほど大きく**、checkpointing の対象外である `memory_trans_fc` は厳密に 0。
+  encoder の dropout は 0 で、対照（同一モデル 2 回）は 7.9e-07 なので確率的要因ではない。
+  **原因は特定できていない**（再計算時のカーネル選択差を疑うが未検証）。
+  `dithub_grounding_dino.py` の docstring は「出力・勾配は checkpointing なしと数学的に同一」
+  と記すが、勾配についてはこの実測と食い違う。
+  本実験は exp_023 と条件を揃えるため **`encoder_cp=6` で進める**（2026-08-12 決定）。
+  `encoder_cp=0` にすれば差は消えるが VRAM を多く使う。exp_037（ODinW-13）は
+  `encoder_cp=0` だったため、この差の影響を受けていない。
 
 ## 8. 承認をお願いする範囲
 
