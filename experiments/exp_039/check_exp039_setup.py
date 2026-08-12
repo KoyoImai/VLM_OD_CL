@@ -13,7 +13,8 @@
   3. データ経路がリプレイ・蒸留と同一（ODVGDataset・サンプラ・source_ratio）
   4. 手法固有値が design.md §2.2 と一致
        ZiRa   : zil_loss_weight=0.1 / neck=ZiRaChannelMapper / llrb lr_mult=0.2
-       DitHub : warmup_epochs=10 / trained_classes / dithub_classes のクラス数
+       DitHub : warmup_epochs=10 / trained_classes / dithub_classes のクラス数 /
+                encoder.num_cp=0（fairscale 再入版が DDP と非互換）/ encoder_cp>0
   5. 本環境固有のパスを config に埋め込んでいないこと（クラスタで解決できること）
   6. （--build 時）model が build でき、学習対象が手法どおり
 """
@@ -139,6 +140,14 @@ if __name__ == '__main__':
             n = len(c.model.get('dithub_classes') or ())
             if n != N_CLASSES[d]:
                 bad.append(f'{tag}: dithub_classes={n}(期待 {N_CLASSES[d]})')
+            # fairscale の再入版 checkpointing は DDP と非互換
+            # （2026-08-12 にクラスタで "marked as ready twice"）。
+            # DitHub は非再入版を encoder_cp で自前に掛けるので num_cp は 0。
+            if c.model['encoder'].get('num_cp') != 0:
+                bad.append(f'{tag}: encoder.num_cp='
+                           f'{c.model["encoder"].get("num_cp")}(期待 0)')
+            if not c.model.get('encoder_cp'):
+                bad.append(f'{tag}: encoder_cp={c.model.get("encoder_cp")}')
     check(4, '手法固有値が design.md §2.2 と一致', not bad,
           f'不一致 {len(bad)}' + (f' {bad[:3]}' if bad else ''))
 

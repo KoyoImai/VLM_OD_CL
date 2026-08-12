@@ -120,12 +120,23 @@ class DitHubGroundingDINO(GroundingDINO):
         if num_cp <= 0:
             return
         enc = self.encoder
-        assert not any(
-            type(m).__name__ == 'OffloadWrapper'
-            or 'checkpoint_wrapper' in type(m).__module__
-            for m in enc.layers), (
-                'fairscale の checkpoint_wrapper が既に適用されている。'
-                'config で encoder=dict(num_cp=0) を指定すること。')
+        # fairscale の checkpoint_wrapper はモジュールを包まず forward を
+        # functools.partial(_checkpointed_forward, ...) に差し替えて同じ
+        # モジュールを返すため、型名では検出できない（2026-08-12 判明）。
+        # forward の実体を見て判定する。
+        def _fairscale_wrapped(m) -> bool:
+            if type(m).__name__ == 'OffloadWrapper':
+                return True
+            fwd = getattr(m, 'forward', None)
+            f = getattr(fwd, 'func', None)          # functools.partial
+            mod = getattr(f, '__module__', '') or getattr(fwd, '__module__', '')
+            return 'checkpoint_activations' in mod or 'checkpoint_wrapper' in mod
+
+        assert not any(_fairscale_wrapped(m) for m in enc.layers), (
+            'fairscale の checkpoint_wrapper が既に適用されている。'
+            'config で encoder=dict(num_cp=0) を指定すること。'
+            '（再入版のため DDP で "Expected to mark a variable ready only once" '
+            'で落ちる）')
         for i in range(min(num_cp, len(enc.layers))):
             _wrap_non_reentrant(enc.layers[i])
             _wrap_non_reentrant(enc.fusion_layers[i])

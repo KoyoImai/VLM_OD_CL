@@ -105,8 +105,16 @@ custom_imports = dict(
 
 # 手法固有: クラス別 LoRA（r=16 / alpha=8 は検出器の既定）。
 # type は ODVG のキャプション文字列に対応した loss を持つ版。
+#
+# encoder=dict(num_cp=0) は必須。事前学習 config の既定 num_cp=6 は fairscale の
+# checkpoint_wrapper（再入版）を encoder に掛けるが、これは backward が二重に走り
+# DDP の ready マークが二度立って
+#   RuntimeError: Expected to mark a variable ready only once
+# で落ちる（2026-08-12 にクラスタで発生）。DitHubGroundingDINO は非再入版
+# （use_reentrant=False）を encoder_cp で自前に掛けるので、fairscale 側は切る。
 model = dict(
     type='DitHubODVGGroundingDINO',
+    encoder=dict(num_cp=0),
     encoder_cp=6,
     dithub_classes={classes})
 
