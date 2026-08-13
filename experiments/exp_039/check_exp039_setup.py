@@ -127,8 +127,14 @@ if __name__ == '__main__':
             if ck.get('llrb', {}).get('lr_mult') != 0.2:
                 bad.append(f'{tag}: llrb lr_mult={ck.get("llrb")}')
         else:
-            if c.model['type'] != 'DitHubODVGGroundingDINO':
-                bad.append(f'{tag}: type={c.model["type"]}')
+            # リプレイ有りは DitHubReplayGroundingDINO でなければならない。
+            # 参照(Objects365)・過去ドメインの画像は現ドメインの dithub_classes に
+            # 無いクラスを持つため、素の _delta_per_sample は specialization 中に
+            # AttributeError で落ちる（2026-08-13 にクラスタで発生）。
+            want_type = ('DitHubReplayGroundingDINO' if r == 'replay'
+                         else 'DitHubODVGGroundingDINO')
+            if c.model['type'] != want_type:
+                bad.append(f'{tag}: type={c.model["type"]}(期待 {want_type})')
             h = [x for x in (c.get('custom_hooks') or [])
                  if x['type'] == 'DitHubSeqPhaseHook']
             if len(h) != 1 or h[0].get('warmup_epochs') != 10:
@@ -162,6 +168,36 @@ if __name__ == '__main__':
                 bad.append(f'{m}_{r}_{d}: {token}')
     check(5, '生成 config に環境固有パスを埋め込んでいない', not bad,
           f'検出 {len(bad)}' + (f' {bad[:3]}' if bad else ''))
+
+    # --- 7. exp_023 の model dict との突き合わせ ----------------------------
+    # 継承元を張り替えたぶん overlay を手で書き起こしているため、取りこぼしを
+    # 個別項目ではなく機械的な差分で検出する（2026-08-13 追加。これが無くて
+    # encoder.num_cp と検出器 type の 2 件をクラスタまで持ち込んだ）。
+    def _flat(d, pre=''):
+        out = {}
+        for k, v in (d.items() if isinstance(d, dict) else []):
+            key = f'{pre}.{k}' if pre else k
+            if isinstance(v, dict):
+                out.update(_flat(v, key))
+            elif k == 'dithub_classes':
+                out[key] = f'<{len(v)}>'
+            else:
+                out[key] = v
+        return out
+
+    # 継承元をリプレイ・蒸留側へ変えたことで生じる差分（design.md §2.1 の意図どおり）
+    ALLOWED = {'backbone.init_cfg.type', 'backbone.init_cfg.checkpoint'}
+    bad = []
+    for (m, r, d), c in cfgs.items():
+        ref = Config.fromfile(os.path.join(
+            CFG_DIR, '..', '..', 'exp_023', 'configs', f'{m}_{r}_{d}.py'))
+        fa, fb = _flat(ref.model), _flat(c.model)
+        for k in sorted(set(fa) | set(fb)):
+            if k in ALLOWED or fa.get(k) == fb.get(k):
+                continue
+            bad.append(f'{m}_{r}_{d}: {k} exp023={fa.get(k)!r} exp039={fb.get(k)!r}')
+    check(7, 'model dict が exp_023 と一致（意図した差分を除く）', not bad,
+          f'12 本 / 想定外の差分 {len(bad)}' + (f' {bad[:3]}' if bad else ''))
 
     # --- 6. model の build --------------------------------------------------
     if do_build:

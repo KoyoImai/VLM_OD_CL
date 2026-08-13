@@ -27,7 +27,14 @@ custom_imports = dict(
     allow_failed_imports=False)
 
 # 手法固有: クラス別 LoRA（r=16 / alpha=8 は検出器の既定）。
-# type は ODVG のキャプション文字列に対応した loss を持つ版。
+# type はリプレイの有無で変える（exp_023 と同じ。2026-08-13 修正）:
+#   replayfree : DitHubODVGGroundingDINO   ODVG のキャプション文字列に対応した loss
+#   replay     : DitHubReplayGroundingDINO 上記に加え DitHubLinear を
+#                DitHubReplayLinear に差し替える。specialization 中、参照(Objects365)や
+#                過去ドメインの画像は現ドメインの dithub_classes に無いクラスを持つため、
+#                素の _delta_per_sample は
+#                  AttributeError: 'ParameterDict' object has no attribute 'class_person'
+#                で落ちる。差し替え版はライブラリ非登録キーに warmup_lora_a を使う。
 #
 # encoder=dict(num_cp=0) は必須。事前学習 config の既定 num_cp=6 は fairscale の
 # checkpoint_wrapper（再入版）を encoder に掛けるが、これは backward が二重に走り
@@ -36,7 +43,7 @@ custom_imports = dict(
 # で落ちる（2026-08-12 にクラスタで発生）。DitHubGroundingDINO は非再入版
 # （use_reentrant=False）を encoder_cp で自前に掛けるので、fairscale 側は切る。
 model = dict(
-    type='DitHubODVGGroundingDINO',
+    type='DitHubReplayGroundingDINO',
     encoder=dict(num_cp=0),
     encoder_cp=6,
     dithub_classes=('pipe', 'fish', 'jellyfish', 'penguin', 'puffin', 'shark',
