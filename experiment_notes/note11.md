@@ -8,8 +8,11 @@ exp_024（リプレイフリー），exp_023（リプレイ），exp_035（lambd
 
 
 ## 実験条件
-- ドメイン順序
-- 初期パラメータ（リプレイフリー）
-- 初期パラメータ（リプレイ）
-- 初期パラメータ（蒸留+リプレイ）
-- バッファデータ：exp_023/buffer に保存してあるものを使用
+- ドメイン順序：Aerial → Microscopic → Documents
+- 初期パラメータ（リプレイフリー）：`experiments/exp_024/fullft_replayfree_videogames_work_dir/fullft_replayfree_videogames.py`
+- 初期パラメータ（リプレイ）：`experiments/exp_027/fullft_replay_videogames_work_dir/epoch_20.pth`
+- 初期パラメータ（λ=10蒸留+リプレイ）：``
+- バッファデータ：`experiments/exp_023/buffer`
+
+
+
