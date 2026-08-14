@@ -16,6 +16,43 @@ ZiRaとDitHubの結果取得
 - DitHub + replay：リプレイを導入した DitHub
 
 
+## 結果
+
+## 結果
+
+---
+**t=1: underwater 学習後**
+|                    | underwater |  zcoco |
+|--------------------|------------|--------|
+| ZiRa               |   0.206    |  0.493 |
+| ZiRa + replay      |   0.201    |  0.500 |
+| DitHub             |   0.215    |  0.504 |
+| DitHub + replay    |   0.215    |  0.504 |
+
+---
+
+**t=2: electromagnetic 学習後**
+|                    | electromagnetic | underwater |  zcoco |
+|--------------------|-----------------|------------|--------|
+| ZiRa               |      0.221      |   0.146    |  0.463 |
+| ZiRa + replay      |      0.195      |   0.196    |  0.490 |
+| DitHub             |      0.215      |   0.142    |  0.435 |
+| DitHub + replay    |            |       |   |
+
+---
+
+**t=3: videogames 学習後**
+|                    | videogames | underwater | electromagnetic |  zcoco |
+|--------------------|------------|------------|-----------------|--------|
+| ZiRa               |   0.115    |   0.111    |      0.139      |  0.418 |
+| ZiRa + replay      |   0.100    |   0.192    |      0.172      |  0.486 |
+| DitHub             |   0.111    |   0.063    |      0.211      |  0.422 |
+| DitHub + replay    |       |       |            |   |
+
+---
+
+
+
 ## 備考
 ### 実験結果ディレクトリ
 exp_039
