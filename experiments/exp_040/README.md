@@ -3,6 +3,8 @@
 design: [[design]]。実験ノート: [[../../experiment_notes/note11]]。
 **実行は design.md の承認後**（行動原理3。2026-08-14 承認済み）。
 
+クラスタ側の作業ディレクトリは `/home/kouyou/VLM_OD_CL`。
+
 ## 0. 状態
 
 | | 状態 |
@@ -27,17 +29,20 @@ git push
 git log --oneline -1
 ```
 
-## 2. クラスタで pull（または clone）
+## 2. クラスタで pull
 
-exp_039 用に `/home/kouyou/VLM_OD_CL_exp039` を作ってある場合はそれを使ってよい。
-exp_036 が使う `/home/kouyou/VLM_OD_CL` には触らない。
+作業ディレクトリは `/home/kouyou/VLM_OD_CL`（2026-08-14 確定）。
 
 ```bash
 ssh kouyou@192.168.170.100
-cd /home/kouyou/VLM_OD_CL_exp039     # または新規 clone 先
+cd /home/kouyou/VLM_OD_CL
+git status --short                   # 変更が無いこと（あれば先に確認）
 git pull && git log --oneline -1     # §1 の commit と一致すること
 ls experiments/exp_040/configs/ | wc -l    # 9 本
 ```
+
+**pull の前に `squeue -u kouyou` で、同じクローンを使う実行中ジョブが無いかを確認する。**
+実行中のジョブが参照するコードを書き換えると、以降に起動する学習・評価が新しいコードで走る。
 
 ## 3. 依存する資産の確認
 
@@ -47,7 +52,7 @@ ls experiments/exp_040/configs/ | wc -l    # 9 本
 for p in exp_024/fullft_replayfree_videogames_work_dir \
          exp_027/fullft_replay_videogames_work_dir \
          exp_035/kdE_condA_l2w100_videogames_work_dir; do
-  ls -la /home/kouyou/VLM_OD_CL_exp039/experiments/$p/epoch_20.pth 2>/dev/null \
+  ls -la /home/kouyou/VLM_OD_CL/experiments/$p/epoch_20.pth 2>/dev/null \
     || echo "MISSING $p/epoch_20.pth"
 done
 ```
@@ -57,7 +62,7 @@ done
 
 ```bash
 cd /workspace/kouyou/mmdetection
-DEST=kouyou@192.168.170.100:/home/kouyou/VLM_OD_CL_exp039/experiments
+DEST=kouyou@192.168.170.100:/home/kouyou/VLM_OD_CL/experiments
 for p in exp_024/fullft_replayfree_videogames_work_dir \
          exp_027/fullft_replay_videogames_work_dir \
          exp_035/kdE_condA_l2w100_videogames_work_dir; do
@@ -74,16 +79,19 @@ exp_027 / exp_028 で使ったものがそのまま使える（新規転送な�
 **3条件を並列に投入できる**（design.md §5.2）。ただしクラスタの同時実行は4ジョブまでなので、
 exp_039 が2ジョブ使っている場合は 2 本までに留めるか、空くのを待つ。
 
-```bash
-cd /home/kouyou/VLM_OD_CL_exp039
-R=/home/kouyou/VLM_OD_CL_exp039
+`sbatch_*.sh` の `REPO` の既定値が `/home/kouyou/VLM_OD_CL` なので、**REPO の指定は不要**。
 
-REPO=$R sbatch experiments/exp_040/sbatch_replayfree.sh   # 約 19 h
-REPO=$R sbatch experiments/exp_040/sbatch_replay.sh       # 約 30 h
-REPO=$R sbatch experiments/exp_040/sbatch_kdE.sh          # 約 36 h
+```bash
+cd /home/kouyou/VLM_OD_CL
+
+sbatch experiments/exp_040/sbatch_replayfree.sh   # 約 19 h
+sbatch experiments/exp_040/sbatch_replay.sh       # 約 30 h
+sbatch experiments/exp_040/sbatch_kdE.sh          # 約 36 h
 
 squeue -u kouyou
 ```
+
+別のクローンから走らせたい場合のみ `REPO=<パス> sbatch ...` とする。
 
 ## 5. 進捗の確認
 
@@ -92,7 +100,7 @@ squeue -u kouyou
 tail -f /home/kouyou/logs/result_exp040_kdE_<JOBID>.txt
 
 # どのドメインまで終わったか
-ls -d /home/kouyou/VLM_OD_CL_exp039/experiments/exp_040/*_work_dir/
+ls -d /home/kouyou/VLM_OD_CL/experiments/exp_040/*_work_dir/
 
 # 投入後 10 分：学習が始まったか
 grep -m3 "Epoch(train)" /home/kouyou/logs/result_exp040_<COND>_<JOBID>.txt
@@ -117,7 +125,7 @@ squeue -u kouyou        # exp040 のジョブが消えていること
 
 ```bash
 cd /workspace/kouyou/mmdetection
-REMOTE=kouyou@192.168.170.100:/home/kouyou/VLM_OD_CL_exp039/experiments/exp_040
+REMOTE=kouyou@192.168.170.100:/home/kouyou/VLM_OD_CL/experiments/exp_040
 LOCAL=experiments/exp_040
 ```
 
@@ -155,7 +163,8 @@ rsync -avh --progress --partial --partial-dir=.rsync-partial \
 
 ## 8. 注意
 
-- **`/home/kouyou/VLM_OD_CL` には触らない**（exp_036 が使用中）。
+- 作業ディレクトリは `/home/kouyou/VLM_OD_CL`。**pull する前に `squeue` で、同じクローンを
+  使う実行中ジョブが無いかを確認する**（§2）。
 - `*_work_dir` 配下は編集しない（禁止則）。
 - `/local_cache/${SLURM_JOB_ID}` はジョブ終了で自動削除される。出力をそこに置かない。
 - 途中で止まっても同じコマンドで再開できる（`epoch_20.pth` があるドメインはスキップ）。
