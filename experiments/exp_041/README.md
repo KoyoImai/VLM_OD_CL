@@ -94,6 +94,27 @@ sbatch experiments/exp_041/sbatch_dithub_replay.sh       # 約 35 h
 squeue -u kouyou
 ```
 
+### 4.1 一部を `a6000` パーティション（node11–13）で走らせる場合
+
+ファイルの修正は不要。`#SBATCH` 行は既定値なので、**投入時のコマンドライン指定で上書きできる**。
+
+```bash
+sbatch --partition=a6000 --cpus-per-task=48 experiments/exp_041/sbatch_dithub_replay.sh
+```
+
+- `--partition=a6000`: node11（96 threads）/ node12（64）/ node13（48）、いずれも A6000 ×4。
+  **VRAM は 48GB/GPU で `a6000_ada` と同じ**なので config・バッチサイズの変更は不要
+  （`MPRGServerDocument/doc_cluster_manual/pages/ConfigNodePartition.md`）。
+- `--cpus-per-task=48`: スクリプト既定の 64 のままだと node13（48 threads）に割り当てられない。
+  48 に下げれば 3 ノードどこでも走る（node11/12 だけでよければ 64 のままで可）。
+- `--exclude=node03` は `a6000` に node03 が無いため無害（そのままでよい）。
+- 注意 1: A6000 は Ada より遅いので §4 の見積もり（25 h / 35 h）より伸びる。
+  `--time=72:00:00` のままで収まる想定だが、心配なら `--time=96:00:00` も投入時に指定できる。
+- 注意 2: node11–13 で `/local_cache` と `/dataset01`（MSCOCO）が使えるかは未確認
+  （node03 は `/local_cache` が無く落ちた前例がある）。投入後にログの
+  `== local_cache staging ==` が出ているかを確認し、mkdir で落ちていたら
+  `--exclude` に該当ノードを足して再投入する。
+
 ## 5. 進捗の確認
 
 ```bash
