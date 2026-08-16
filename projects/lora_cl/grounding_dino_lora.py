@@ -67,6 +67,9 @@ def _set_submodule(model, name, new):
 
 @MODELS.register_module()
 class GroundingDINOLoRA(GroundingDINO):
+    # 挿入する LoRA 層のクラス。サブクラス（InfLoRA など）が差し替える。
+    lora_cls = LoRALinear
+
     def __init__(self, *args, lora=None, use_dn: bool = True, **kwargs):
         super().__init__(*args, **kwargs)
         assert lora is not None, 'lora 設定が必要です'
@@ -147,7 +150,7 @@ class GroundingDINOLoRA(GroundingDINO):
             wrapped.append(name)
         modules = dict(self.named_modules())
         for name in wrapped:
-            _set_submodule(self, name, LoRALinear(modules[name], r, alpha))
+            _set_submodule(self, name, self.lora_cls(modules[name], r, alpha))
         self._freeze_base()
         n_tr = sum(p.numel() for p in self.parameters() if p.requires_grad)
         n_tot = sum(p.numel() for p in self.parameters())
