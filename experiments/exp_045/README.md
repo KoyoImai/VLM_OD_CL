@@ -52,6 +52,62 @@ squeue -u kouyou
 exp_043（2）・exp_044（1）と合わせて 5 本になるため、**1 本は同時実行 4 本制限で
 キュー待ち**になる（投入は 8 本まで可。空き次第自動で開始）。
 
+## 3.5 障害と修正・EWC の再開手順（2026-08-19）
+
+EWC が t=2（electromagnetic）開始直後に
+`RuntimeError: Expected to mark a variable ready only once` で停止した。
+原因は「EWC ペナルティ（θ の forward 外使用）× fairscale **再入型** checkpointing
+（encoder num_cp=6）× DDP」の組み合わせで、t=2 でペナルティが活性化した時点で
+勾配が 2 経路になり顕在化した（t=1 はペナルティ不活性のため通る。最小再現で
+cp あり=エラー / cp なし=正常を実証済み）。
+
+**修正**: EWC config に `encoder=dict(num_cp=0)` を追加（2026-08-19、ユーザー決定）。
+InfLoRA は影響なし（ペナルティを持たない）で num_cp=6 のまま。
+checkpointing の有無による数値条件の但し書きは design.md §6。
+
+**t=1 の成果物はすべて有効**なので、underwater はやり直さない。エラーが t=2 の学習中に
+出たこと自体が「t=1 の学習 → Fisher（state_t1.pth）→ 評価」まで完了している証拠である
+（ドライバはこの順で t=2 に進む）。ドライバは `ewc_states/state_t{t}.pth` の有無で
+タスクをスキップするため、再投入だけで t=2 から再開される。
+
+### 再開手順
+
+**(1) 本環境**: 修正済み config を push する。
+
+```bash
+cd /workspace/kouyou/mmdetection
+python experiments/exp_045/check_exp045_setup.py     # 2/2 OK を確認（2026-08-19 実施済み）
+git add experiments/exp_045/
+git commit -m "fix exp_045 ewc: encoder num_cp=0 (reentrant cp x EWC penalty x DDP)"
+git push
+git log --oneline -1
+```
+
+**(2) クラスタ**: pull して EWC ジョブだけ再投入する。
+
+```bash
+ssh kouyou@192.168.170.100
+cd /home/kouyou/VLM_OD_CL_exp045
+squeue -u kouyou          # inflora ジョブが同クローンで実行中でも、変更は ewc 側のみなので pull は安全
+git pull && git log --oneline -1     # (1) の commit と一致すること
+ls experiments/exp_045/ewc_states/   # state_t1.pth があること（= t=2 から再開される）
+sbatch experiments/exp_045/sbatch_ewc.sh
+squeue -u kouyou
+```
+
+**(3) 再開後 10 分の確認**: t=1 がスキップされ、t=2 の学習が始まり、ペナルティが
+乗っていること。
+
+```bash
+grep -m2 "スキップ\|t=2/6" /home/kouyou/logs/result_exp045_ewc_<新JOBID>.txt
+grep -m3 "Epoch(train)" /home/kouyou/logs/result_exp045_ewc_<新JOBID>.txt
+grep -m3 "loss_ewc" /home/kouyou/logs/result_exp045_ewc_<新JOBID>.txt   # t>=2 で必ず出る
+```
+
+**記録**: この再開により **t=1 は num_cp=6、t=2 以降は num_cp=0** という混在になる
+（2026-08-19 判断: t=1 はペナルティ不活性＝素のフル FT と同条件であり、num_cp=6 は
+むしろ replayfree と揃っている。差は浮動小数点レベルのため取り直しはしない）。
+
 ## 4. 進捗の確認
 
 ```bash

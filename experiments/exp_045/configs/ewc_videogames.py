@@ -22,6 +22,16 @@ custom_imports = dict(
 # λ（本走 10^3）と EWC 状態はドライバが --cfg-options model.ewc.lam= /
 # model.ewc.state_path= で毎タスク明示する（t=1 は状態無し = ペナルティ不活性）。
 # dn は RF100 枠に従い有効のまま（use_dn を渡さない = 既定 True）。
+#
+# encoder=dict(num_cp=0) は必須（2026-08-19 修正）。既定の num_cp=6 は fairscale の
+# **再入型** checkpoint_wrapper を encoder に掛けるが、EWC ペナルティは θ を forward の
+# 外で直接使うため勾配が 2 経路になり、再入型 checkpoint の入れ子 backward と DDP の
+# 組で「Expected to mark a variable ready only once」で落ちる（t=2 でペナルティが
+# 活性化した時点でクラスタで発生。最小再現で cp あり=エラー / cp なし=正常を実証済み）。
+# t=1 はペナルティ不活性のため num_cp=6 でも通る。checkpointing の有無は勾配を
+# 浮動小数点レベルで変えるため、対照（replayfree/InfLoRA は num_cp=6）との但し書きは
+# design.md §6 に記録。
 model = dict(
     type='EWCGroundingDINO',
+    encoder=dict(num_cp=0),
     ewc=dict(target_components='all', lam=0.0, state_path=None))

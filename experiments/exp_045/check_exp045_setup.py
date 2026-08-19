@@ -41,7 +41,9 @@ THETA0 = os.path.join(
     ROOT, 'grounding_dino_swin-t_pretrain_obj365_goldg_grit9m_v3det'
     '_20231204_095047-b448804b.pth')
 ALLOWED = {
-    'ewc': {'type', 'ewc.target_components', 'ewc.lam', 'ewc.state_path'},
+    # encoder.num_cp=0 は 2026-08-19 の修正（EWC ペナルティ × 再入型 cp × DDP の衝突回避）
+    'ewc': {'type', 'ewc.target_components', 'ewc.lam', 'ewc.state_path',
+            'encoder.num_cp'},
     'inflora': {'type', 'inflora.design_path', 'lora.r', 'lora.alpha',
                 'lora.exclude_components', 'lora.decompose_mha', 'lora.include'},
 }
@@ -116,6 +118,10 @@ if __name__ == '__main__':
                 bad.append(f'{tag}: 現在ドメインのデータでない')
             if 'use_dn' in c.model:
                 bad.append(f'{tag}: use_dn が上書きされている（dn は有効のまま）')
+            if m == 'ewc' and c.model.get('encoder', {}).get('num_cp') != 0:
+                bad.append(f'{tag}: encoder.num_cp が 0 でない（DDP×ペナルティ衝突）')
+            if m == 'inflora' and c.model.get('encoder', {}).get('num_cp') != 6:
+                bad.append(f'{tag}: inflora の num_cp が既定 6 でない')
             ref = Config.fromfile(base_path(d))
             if _plain(ref.train_dataloader) != _plain(c.train_dataloader):
                 bad.append(f'{tag}: train_dataloader が継承元と不一致')
