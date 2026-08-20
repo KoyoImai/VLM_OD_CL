@@ -35,3 +35,17 @@ model = dict(
     type='EWCGroundingDINO',
     encoder=dict(num_cp=0),
     ewc=dict(target_components='all', lam=0.0, state_path=None))
+
+# DDP の static_graph=True は必須（2026-08-20 修正）。上記 num_cp=0 は encoder の
+# fairscale 再入型 checkpointing を切るだけで、**Swin backbone の with_cp=True**
+# （事前学習 config、mmdet/models/backbones/swin.py:375 が use_reentrant 未指定＝再入型）
+# は残るため、同じ機序（EWC ペナルティによる 2 経路目の勾配 × 再入型 cp の入れ子
+# backward × DDP）で t=2 に
+#   Expected to mark a variable ready only once ...
+#   backbone.stages.3.blocks.1.ffn.layers.1.bias has been marked as ready twice
+# が出る（2026-08-20 にクラスタで発生。本環境 2 GPU で同一パラメータ・同一 index で再現）。
+# static_graph=True は再入型 checkpointing を DDP 下で使うための PyTorch 公式の構成で、
+# 学習の計算自体（cp あり）は t=1・他条件（replayfree/InfLoRA/LoRA）と同じまま変わらない。
+# 対照として backbone.with_cp=False も実測したが、batch 4/GPU で 40GB を使い切り
+# iter 13 で OOM（2 回再現）したため採らない。検証は design.md §6。
+model_wrapper_cfg = dict(type='MMDistributedDataParallel', static_graph=True)

@@ -136,6 +136,26 @@ microscopic → documents の 6 ドメインで学習・評価する（2026-08-1
   学習・Fisher 推定・評価まで完了しており有効なため取り直さず、**t=1 は num_cp=6・
   t≥2 は num_cp=0 の混在**とする（t=1 はペナルティ不活性＝素のフル FT と同条件で、
   num_cp=6 は replayfree と揃っている。2026-08-19 判断）。
+- **DDP は `static_graph=True`（EWC のみ）**（2026-08-20 修正）。上の num_cp=0 は encoder の
+  fairscale 再入型 cp を切るだけで、**Swin backbone の `with_cp=True`**（事前学習 config、
+  `mmdet/models/backbones/swin.py:375` が `use_reentrant` 未指定＝再入型）は残っていたため、
+  同じ機序が t=2 で再発した（2026-08-20 クラスタ。
+  `backbone.stages.3.blocks.1.ffn.layers.1.bias has been marked as ready twice`）。
+  本環境 2 GPU（A100 40GB、batch 4/GPU、λ=10³、実 Fisher 状態）で同一パラメータ・
+  同一 index 169 として再現したうえで 2 案を実測した:
+
+  | 案 | 結果 | allocated ピーク | iteration 時間 |
+  |---|---|---:|---:|
+  | `backbone.with_cp=False` | **iter 13 で OOM**（2 回再現。確保総量 39.42 GiB） | 28,119 MiB | 1.60 s |
+  | `static_graph=True`（cp 維持） | **303 iteration 完走**（`loss_ewc` 全 iteration に出現、0.122→1.51） | 31,226 MiB | 1.49 s |
+
+  採用は `static_graph=True`（2026-08-20 ユーザー承認）。再入型 checkpointing を DDP 下で
+  使うための PyTorch 公式の構成であり、学習の計算そのもの（cp あり）は t=1・対照
+  （replayfree / InfLoRA / LoRA）と同一のまま、変わるのは DDP が勾配集約の順序を初回
+  イテレーションで確定して再利用する点だけである。`encoder=dict(num_cp=0)` は残すため、
+  上記の num_cp 混在の記述は変わらない。**メモリの但し書き**: ペナルティ活性時の実測は
+  31.2 GB（batch 4/GPU）で、§4.2 で記録した 5.1 GB（ペナルティ不活性の 1 step 検証）とは
+  桁が違う。A6000 Ada 48GB には収まるが余裕は約 1.5 倍である。
 
 ## 7. 承認をお願いする範囲
 

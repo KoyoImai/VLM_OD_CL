@@ -108,6 +108,94 @@ grep -m3 "loss_ewc" /home/kouyou/logs/result_exp045_ewc_<新JOBID>.txt   # t>=2 
 （2026-08-19 判断: t=1 はペナルティ不活性＝素のフル FT と同条件であり、num_cp=6 は
 むしろ replayfree と揃っている。差は浮動小数点レベルのため取り直しはしない）。
 
+## 3.6 障害と修正・EWC の再開手順（2026-08-20）
+
+§3.5 の修正後に再投入した EWC が、**再び t=2（electromagnetic）の学習開始直後**に
+同じ `RuntimeError: Expected to mark a variable ready only once` で停止した。
+今度は落ちたパラメータが backbone 側である
+（`Parameter at index 169 with name backbone.stages.3.blocks.1.ffn.layers.1.bias`）。
+
+**原因**: §3.5 の `encoder=dict(num_cp=0)` は **encoder の fairscale 再入型 cp を切るだけ**で、
+**Swin backbone の `with_cp=True`**（事前学習 config `grounding_dino_swin-t_pretrain_obj365.py`
+44 行目。`mmdet/models/backbones/swin.py:375` が `cp.checkpoint(...)` を `use_reentrant`
+未指定＝再入型で呼ぶ）はそのまま残っていた。EWC ペナルティが θ に 2 経路目の勾配を
+作るため、再入型 checkpoint の入れ子 backward と DDP の組で同じ機序が backbone 側で
+顕在化する（t=1 はペナルティ不活性のため通る）。
+
+**検証（本環境、A100 40GB × 2、batch 4/GPU、λ=10³、デバッグ用 Fisher 状態）**:
+クラスタと同一のパラメータ・同一 index でエラーを再現したうえで、2 案を実測した。
+
+| 案 | 結果 | allocated ピーク | iteration 時間 |
+|---|---|---:|---:|
+| `backbone.with_cp=False` | **iter 13 で OOM**（2 回再現。確保総量 39.42 GiB） | 28,119 MiB | 1.60 s |
+| `static_graph=True`（cp 維持） | **303 iteration 完走**（`loss_ewc` 全 iteration に出現） | 31,226 MiB | 1.49 s |
+
+**修正**: EWC config に
+`model_wrapper_cfg = dict(type='MMDistributedDataParallel', static_graph=True)` を追加
+（2026-08-20、ユーザー決定）。再入型 checkpointing を DDP 下で使うための PyTorch 公式の
+構成であり、学習の計算そのもの（cp あり）は t=1・対照（replayfree / InfLoRA / LoRA）と
+同一のまま、変わるのは DDP の勾配集約の記帳だけである。`encoder=dict(num_cp=0)` は
+§3.5 のまま残す。InfLoRA は影響なし（ペナルティを持たない）。但し書きは design.md §6。
+
+**t=1 の成果物は §3.5 と同様にすべて有効**で、`ewc_states/state_t1.pth` があるため
+再投入だけで t=2 から再開される（ドライバは状態ファイルの有無でスキップ判定）。
+
+**メモリの注意**: §4 に記した 5.1 GB はペナルティ不活性の 1 step 検証値である。
+ペナルティ活性時の実測は **31.2 GB（batch 4/GPU）**で、A6000 Ada 48GB には収まるが
+余裕は約 1.5 倍しかない。他ジョブと GPU を共有しない前提で投入すること。
+
+### 再開手順
+
+**(1) 本環境**: 修正済み config を検証して push する（実施済みの検証結果を併記）。
+
+```bash
+cd /workspace/kouyou/mmdetection
+python experiments/exp_045/gen_configs.py            # ewc_*.py 6 本を再生成
+python experiments/exp_045/check_exp045_setup.py     # 2/2 OK（2026-08-20 実施済み）
+
+git add experiments/exp_045/
+git commit -m "fix exp_045 ewc: DDP static_graph=True (reentrant cp in Swin backbone x EWC penalty)"
+git push
+git log --oneline -1
+```
+
+**(2) クラスタ**: 専用クローンで pull して EWC ジョブだけ再投入する。
+
+```bash
+ssh kouyou@192.168.170.100
+cd /home/kouyou/VLM_OD_CL_exp045
+squeue -u kouyou                      # 走っているジョブの確認（変更は ewc 側のみなので pull は安全）
+git pull && git log --oneline -1      # (1) の commit と一致すること
+python3 - <<'EOF'
+import re
+s = open('experiments/exp_045/configs/ewc_electromagnetic.py').read()
+print('static_graph:', 'static_graph=True' in s.replace(' ', ''))
+print('num_cp=0    :', 'num_cp=0' in s.replace(' ', ''))
+EOF
+ls experiments/exp_045/ewc_states/    # state_t1.pth があること（= t=2 から再開される）
+sbatch experiments/exp_045/sbatch_ewc.sh
+squeue -u kouyou
+```
+
+`sbatch_ewc.sh` は `LAM=1000 GPUS=4` でドライバを呼ぶ器で、パーティションは
+`a6000_ada`（`--exclude=node03`。node03 は `/local_cache` が無く mkdir で落ちる）、
+rf100_domain を `/local_cache/$SLURM_JOB_ID` にステージングし、MSCOCO・θ0・
+bert-base-uncased を bind する。ジョブ側は何も変更していない。
+
+**(3) 再開後 10 分の確認**: t=1 がスキップされ、t=2 の学習が iteration を刻み、
+ペナルティが乗っていること。§3.5 と同じく次の 3 点を見る。
+
+```bash
+LOG=/home/kouyou/logs/result_exp045_ewc_<新JOBID>.txt
+grep -m2 "スキップ\|t=2/6" $LOG
+grep -m3 "Epoch(train)" $LOG          # iteration が進んでいること（前回はここで停止した）
+grep -m3 "loss_ewc" $LOG              # t>=2 で必ず出る（ペナルティが有効）
+grep -c "marked as ready twice" $LOG  # 0 であること
+```
+
+エラーが出るとすれば従来どおり t=2 の最初の backward なので、**この確認は
+再投入から 10 分以内に行えば十分**である（前回・前々回とも学習開始直後に停止した）。
+
 ## 4. 進捗の確認
 
 ```bash
