@@ -88,7 +88,7 @@ git log --oneline -1
 ```bash
 ssh kouyou@192.168.170.100
 cd /home/kouyou/VLM_OD_CL_exp045
-squeue -u kouyou          # inflora ジョブが同クローンで実行中でも、変更は ewc 側のみなので pull は安全
+squeue -u kouyou          # ← この行の注記は誤り。訂正は下記（2026-08-20）
 git pull && git log --oneline -1     # (1) の commit と一致すること
 ls experiments/exp_045/ewc_states/   # state_t1.pth があること（= t=2 から再開される）
 sbatch experiments/exp_045/sbatch_ewc.sh
@@ -103,6 +103,11 @@ grep -m2 "スキップ\|t=2/6" /home/kouyou/logs/result_exp045_ewc_<新JOBID>.tx
 grep -m3 "Epoch(train)" /home/kouyou/logs/result_exp045_ewc_<新JOBID>.txt
 grep -m3 "loss_ewc" /home/kouyou/logs/result_exp045_ewc_<新JOBID>.txt   # t>=2 で必ず出る
 ```
+
+**訂正（2026-08-20）**: 上のコマンド中の「実行中でも pull は安全」は誤りである。
+`PULL_WHILE_RUNNING.md` の結論は「実行中のジョブがあるうちは pull しない」で、
+逐次ドライバはドメインごとに別プロセスを起動するため pull すると次ドメインから別コードで
+走る。正しい前提と手順は §3.6 (2) を参照する。
 
 **記録**: この再開により **t=1 は num_cp=6、t=2 以降は num_cp=0** という混在になる
 （2026-08-19 判断: t=1 はペナルティ不活性＝素のフル FT と同条件であり、num_cp=6 は
@@ -138,7 +143,8 @@ grep -m3 "loss_ewc" /home/kouyou/logs/result_exp045_ewc_<新JOBID>.txt   # t>=2 
 §3.5 のまま残す。InfLoRA は影響なし（ペナルティを持たない）。但し書きは design.md §6。
 
 **t=1 の成果物は §3.5 と同様にすべて有効**で、`ewc_states/state_t1.pth` があるため
-再投入だけで t=2 から再開される（ドライバは状態ファイルの有無でスキップ判定）。
+**同じクローンに再投入すれば** t=2 から再開される（ドライバは状態ファイルの有無でスキップ
+判定する）。別クローンを使う場合は再開されない — 下の「補足」を参照。
 
 **メモリの注意**: §4 に記した 5.1 GB はペナルティ不活性の 1 step 検証値である。
 ペナルティ活性時の実測は **31.2 GB（batch 4/GPU）**で、A6000 Ada 48GB には収まるが
@@ -159,28 +165,51 @@ git push
 git log --oneline -1
 ```
 
-**(2) クラスタ**: 専用クローンで pull して EWC ジョブだけ再投入する。
+**(2) クラスタ**: **今回は既存の専用クローン `/home/kouyou/VLM_OD_CL_exp045` を再利用する**
+（2026-08-20 ユーザー決定。通常の選択肢は §3.6 補足を参照）。マスターノードにログインし、
+pull してから EWC ジョブだけ再投入する。計算ノードへは直接 SSH できないため、
+すべてマスターノードでの `sbatch` / `squeue` で操作する。
+
+**pull の前提**: `PULL_WHILE_RUNNING.md` の結論は「実行中のジョブがあるうちは pull しない」で
+ある。逐次ドライバはドメインごとに新しいプロセスを起動するため、pull すると**次のドメインから
+別のコードで走る**（同一条件で 6 ドメインを逐次学習した、という前提が崩れる）。加えて、
+未追跡の出力があると pull は中断し、その復旧手順（`RECOVER_CLUSTER_PULL.md`）は未追跡ファイルの
+削除を含むため、実行中ジョブが開いたままのログ・`last_checkpoint` を壊す。したがって
+**このクローンから走るジョブが無いことを確認してから pull する**。走っていれば終了を待つ。
 
 ```bash
 ssh kouyou@192.168.170.100
 cd /home/kouyou/VLM_OD_CL_exp045
-squeue -u kouyou                      # 走っているジョブの確認（変更は ewc 側のみなので pull は安全）
+
+# ① このクローンから走っているジョブが無いことを確認する（exp045_ewc / exp045_inflora）
+squeue -u kouyou
+#    → 出ていれば pull しない。終わるまで待つ
+
+# ② pull（中断したら RECOVER_CLUSTER_PULL.md。ただしジョブが無い状態でのみ実施する）
 git pull && git log --oneline -1      # (1) の commit と一致すること
-python3 - <<'EOF'
-import re
-s = open('experiments/exp_045/configs/ewc_electromagnetic.py').read()
-print('static_graph:', 'static_graph=True' in s.replace(' ', ''))
-print('num_cp=0    :', 'num_cp=0' in s.replace(' ', ''))
-EOF
-ls experiments/exp_045/ewc_states/    # state_t1.pth があること（= t=2 から再開される）
+
+# ③ 修正が入っていることを確認（6 本すべてに static_graph、num_cp=0 は据え置き）
+grep -l "static_graph=True" experiments/exp_045/configs/ewc_*.py | wc -l        # 6（EWC 全本に入る）
+grep -c "^    encoder=dict(num_cp=0)," experiments/exp_045/configs/ewc_*.py     # 各 1（§3.5 の据え置き）
+grep -L "static_graph" experiments/exp_045/configs/inflora_*.py | wc -l         # 6（InfLoRA は一切不変）
+
+# ④ t=2 から再開されることを確認（ドライバは state_t{t}.pth の有無でスキップ判定し、
+#    スキップ時も θ_1 = ewc_underwater_work_dir/epoch_20.pth を次の load_from に使う）
+ls -lh experiments/exp_045/ewc_states/state_t1.pth
+ls -lh experiments/exp_045/ewc_underwater_work_dir/epoch_20.pth
+
+# ⑤ 投入（REPO はスクリプト既定の /home/kouyou/VLM_OD_CL_exp045 なので REPO= は不要）
 sbatch experiments/exp_045/sbatch_ewc.sh
 squeue -u kouyou
 ```
 
 `sbatch_ewc.sh` は `LAM=1000 GPUS=4` でドライバを呼ぶ器で、パーティションは
 `a6000_ada`（`--exclude=node03`。node03 は `/local_cache` が無く mkdir で落ちる）、
-rf100_domain を `/local_cache/$SLURM_JOB_ID` にステージングし、MSCOCO・θ0・
-bert-base-uncased を bind する。ジョブ側は何も変更していない。
+`--gres=gpu:4` / `--cpus-per-task=64` / `--time=96:00:00`、ログは
+`/home/kouyou/logs/result_%x_%j.txt`。rf100_domain を `/local_cache/$SLURM_JOB_ID`
+（ジョブ専用・**ジョブ終了時に自動削除**）へステージングし、MSCOCO（`/dataset01/MSCOCO`）・
+θ0（`/home/kouyou/ckpt`）・bert-base-uncased を bind する。ジョブ側は何も変更していない。
+同時実行は 4 ジョブまで（超過分はキュー待ちで自動開始）。中止は `scancel <JOBID>`。
 
 **(3) 再開後 10 分の確認**: t=1 がスキップされ、t=2 の学習が iteration を刻み、
 ペナルティが乗っていること。§3.5 と同じく次の 3 点を見る。
@@ -195,6 +224,26 @@ grep -c "marked as ready twice" $LOG  # 0 であること
 
 エラーが出るとすれば従来どおり t=2 の最初の backward なので、**この確認は
 再投入から 10 分以内に行えば十分**である（前回・前々回とも学習開始直後に停止した）。
+
+### 補足: 別クローンで再開する場合（今回は使わない）
+
+InfLoRA など**同じクローンから走るジョブを止めたくない**場合は、pull せずに新しいクローンを
+作り、`REPO=` を向けて投入する（`PULL_WHILE_RUNNING.md` §3、`SETUP_SECOND_CLONE.md`）。
+`sbatch_ewc.sh` は `REPO="${REPO:-/home/kouyou/VLM_OD_CL_exp045}"` で受けるので、
+`REPO=<新クローン> sbatch ...` で切り替わる。
+
+ただし**その場合は再開されず t=1 から学習し直しになる**。ドライバが見るのは
+クローン内の `experiments/exp_045/` 配下だからで、最低限つぎの 2 つを旧クローンから
+コピーする必要がある（`eval_ewc/t1_*` も無ければ t=1 の評価が再実行される。無害だが約 30 分）。
+
+```bash
+NEW=/home/kouyou/VLM_OD_CL_<新クローン>/experiments/exp_045
+OLD=/home/kouyou/VLM_OD_CL_exp045/experiments/exp_045
+mkdir -p "$NEW/ewc_states" "$NEW/ewc_underwater_work_dir"
+cp "$OLD/ewc_states/state_t1.pth"                 "$NEW/ewc_states/"              # 約 1.4 GB
+cp "$OLD/ewc_underwater_work_dir/epoch_20.pth"    "$NEW/ewc_underwater_work_dir/" # 約 2.0 GB
+cp -r "$OLD/eval_ewc/t1_"*                        "$NEW/eval_ewc/" 2>/dev/null
+```
 
 ## 4. 進捗の確認
 
