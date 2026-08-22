@@ -1,0 +1,82 @@
+# =============================================================================
+# exp_049: DGS ZCOCO 評価（COCO2017 val・ood_th=200 は公式 ZCOCO.py どおり）
+# 【自動生成】experiments/exp_049/gen_eval_configs.py。直接編集しない。
+# seen_tasks / task_id / domain_predictor_cfg.task_id_mapping_path は
+# ドライバが --cfg-options で上書きする。
+# =============================================================================
+_base_ = '../../../configs/mm_grounding_dino/grounding_dino_swin-t_pretrain_obj365.py'  # noqa
+
+custom_imports = dict(imports=['projects.dgs_cl'], allow_failed_imports=False)
+
+moe_cfg = dict(
+    type='moe_adaptive_expand_lora', experts_num=1, top_k=1,
+    r=16, alpha=32.0, dropout=0.0,
+    group_cfg=dict(type='rep', merge_method='ema', lambda_A=0.2, lambda_B=0.2),
+    replace_layer_type=['enc_ffn_img', 'enc_ffn_text'],
+    replace_enc_layer_ids=[0, 1, 2, 3, 4, 5], replace_dec_layer_ids=[])
+
+model = dict(
+    type='GroundingDINO_DGS_Base',
+    num_tasks=13,
+    task_id=12,
+    seen_tasks='AerialMaritimeDrone,Aquarium,CottontailRabbits,EgoHands,NorthAmericaMushroom,Packages,PascalVOC,pistols,pothole,Raccoon,ShellfishOpenImages,thermalDogsAndPeople,VehiclesOpenImages',
+    moe_cfg=moe_cfg,
+    vis_cfg=dict(type='none', save_path=''),
+    frozen_cfg=dict(
+        backbone_frozen=True, language_model_frozen=True, neck_frozen=True,
+        encoder_frozen=True, decoder_frozen=True, head_frozen=True,
+        exclude_keywords=['lora_']),
+    domain_predictor_cfg=dict(
+        type='svd',
+        feat_path='experiments/exp_049/feats/',
+        stats_path='experiments/exp_049/stats/',
+        task_id_mapping_path='experiments/exp_049/work_dirs/task_id_mapping.yaml',
+        multilevel=False,
+        expand_th=150,
+        ood_th=200,
+        min_eig_ratio=1e-3),
+    bbox_head=dict(
+        type='GroundingDINOHead_inc',
+        setting='cur_text',
+        trunc_class=[0, 256]),
+)
+
+# ckpt ロード時のキー写像（plain → .base_layer.）。DGS 学習 ckpt はそのままでも
+# 読めるが、θ0 を直接評価する場合に必要。group_init は評価では作用しない。
+custom_hooks = [
+    dict(type='WeightsTransformHook', cfg=[dict(type='moe_lora')]),
+    dict(type='DomainPredictorHooK'),
+]
+
+test_pipeline = [
+    dict(type='LoadImageFromFile', backend_args=None, imdecode_backend='pillow'),
+    dict(type='FixScaleResize', scale=(800, 1333), keep_ratio=True, backend='pillow'),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(
+        type='PackDetInputs',
+        meta_keys=('img_id', 'img_path', 'ori_shape', 'img_shape',
+                   'scale_factor', 'text', 'custom_entities')),
+]
+
+val_dataloader = dict(
+    batch_size=1,
+    dataset=dict(
+        _delete_=True,
+        type='CocoDataset',
+        data_root='/workspace/kouyou/datasets/coco2017/',
+        ann_file='annotations/instances_val2017.json',
+        data_prefix=dict(img='val2017/'),
+        test_mode=True,
+        pipeline=test_pipeline,
+        return_classes=True,
+        backend_args=None))
+test_dataloader = val_dataloader
+
+val_evaluator = dict(
+    _delete_=True,
+    type='CocoMetric',
+    ann_file='/workspace/kouyou/datasets/coco2017/annotations/instances_val2017.json',
+    metric='bbox',
+    format_only=False,
+    backend_args=None)
+test_evaluator = val_evaluator
