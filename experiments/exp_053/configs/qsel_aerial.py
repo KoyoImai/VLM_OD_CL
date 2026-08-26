@@ -1,0 +1,34 @@
+# =============================================================================
+# exp_053: 蒸留E × 学習可能モジュール = Language-guided Query Selection（memory_trans_fc/norm + level_embed + query_embedding） / aerial（逐次 t=4）
+#
+# 【自動生成】experiments/exp_053/gen_configs.py。直接編集しない。
+#
+# ベース = exp_040 kdE（旧バッチ [4,1,1]×6・λ=10・バッファ由来 2 枚限定）。
+# 上書きは paramwise の凍結（lr_mult 0.0）と ckpt 保存方針だけ（design.md §1.1）。
+# t=4 の初期重み・教師は exp_052 の同一条件の videogames epoch_20（design.md §1.2）。
+# 教師 θ_{t-1} はドライバが model.teacher_ckpt で渡す。
+# =============================================================================
+_base_ = '../../exp_040/configs/kdE_aerial.py'
+
+optim_wrapper = dict(
+    paramwise_cfg=dict(
+        custom_keys=dict(
+            backbone=dict(lr_mult=0.0),  # 凍結
+            language_model=dict(lr_mult=0.0),  # 凍結
+            neck=dict(lr_mult=0.0),  # 凍結
+            text_feat_map=dict(lr_mult=0.0),  # 凍結
+            encoder=dict(lr_mult=0.0),  # 凍結
+            decoder=dict(lr_mult=0.0),  # 凍結
+            bbox_head=dict(lr_mult=0.0),  # 凍結
+            memory_trans_fc=dict(lr_mult=1.0),  # 学習
+            memory_trans_norm=dict(lr_mult=1.0),  # 学習
+            query_embedding=dict(lr_mult=1.0),  # 学習
+            level_embed=dict(lr_mult=1.0),  # 学習
+            dn_query_generator=dict(lr_mult=0.0),  # 凍結
+        )))
+
+# ckpt は last のみ・optimizer 状態なし（design.md §3）
+default_hooks = dict(
+    checkpoint=dict(type='CheckpointHook', interval=20, max_keep_ckpts=-1,
+                    save_optimizer=False, save_param_scheduler=False),
+    logger=dict(type='LoggerHook', interval=50))
