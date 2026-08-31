@@ -7,10 +7,12 @@
 #   ※ 実行は design.md の承認後（行動原理3。2026-08-31 承認済み）。
 # =============================================================================
 #SBATCH --job-name=exp054_ewc_s1
-# EWC は videogames（num_cp=0）が 48GB では OOM のため a100（80GB）で実行
+# EWC は videogames（num_cp=0）が 48GB では OOM のため a100（80GB）で実行。
+# node21 はエラーになるため node22 のみ指定（2026-08-31 ユーザー指示。原因未特定）
 # （exp_045 の実効 config が num_cp=0 のまま完走している事実からの推定。
 #   当時のログのノード名で a100 だったことを確認できればなお確実）
 #SBATCH --partition=a100
+#SBATCH --nodelist=node22
 #SBATCH --gres=gpu:4
 #SBATCH --cpus-per-task=64
 #SBATCH --time=144:00:00
