@@ -6,7 +6,7 @@
 
 ## 0. 位置付け
 
-これまでの全実験は seed=0 固定である。note15 の主要 6 手法について seed=1, 2 の系列を
+これまでの全実験は seed=0 固定である。note15 の主要 7 手法（2026-09-01 に Finetuning を追加）について seed=1, 2 の系列を
 追加し（既存 seed=0 と合わせて n=3）、手法間の序列（適応・保持・ZCOCO）が seed に
 依存しないことを確認する。**仮説と判定基準はユーザーがノートで確定する。**
 参考: 同一条件の再実行差の実測は exp_033 にある（λ=1.0 反復で ZCOCO 0.421 vs 0.415 等）。
@@ -20,6 +20,7 @@
 | 手法 | 枠（継承元 config） | 備考 |
 |---|---|---|
 | Ours | exp_035 kdE（t1–3）＋ exp_040 kdE（t4–6） | 蒸留E λ=10・旧バッチ [4,1,1]×6 |
+| Finetuning | exp_024 replayfree（t1–3）＋ exp_040 replayfree（t4–6） | リプレイなし逐次 FT（2026-09-01 追加） |
 | ER | exp_023/027 fullft_replay（t1–3）＋ exp_040 replay（t4–6） | リプレイのみ |
 | EWC | exp_045 ewc_*（λ=1000 はドライバ指定） | Fisher 推定の --seed も変更 |
 | InfLoRA | exp_045 inflora_*（r=16, α=16, lamb 0.95） | prepare / update / merge の --seed も変更 |
@@ -46,7 +47,7 @@
 
 ## 3. 実行環境とコスト
 
-MPRG クラスタ **12 ジョブ**（6 手法 × 2 seed。各 4 GPU・a6000_ada・`--time=144:00:00`）。
+MPRG クラスタ **14 ジョブ**（7 手法 × 2 seed。各 4 GPU・a6000_ada・`--time=144:00:00`）。
 同時実行 4 本制限のため 3 波に分かれる。見積もり: Ours / ER 各 90〜120 h、
 EWC / InfLoRA 各 60〜90 h、ZiRa / DitHub 各 60〜90 h → 全体で実時間 1.5〜2 週間規模。
 ckpt 容量 ≒ 0.7 GB × 6 × 12 ≒ 50 GB（last のみ）。

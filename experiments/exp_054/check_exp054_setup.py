@@ -43,6 +43,8 @@ def train_cfgs():
                             else f'experiments/exp_040/configs/kdE_{d}.py')
         out[('er', d)] = (f'experiments/exp_027/configs/fullft_replay_{d}.py' if first
                           else f'experiments/exp_040/configs/replay_{d}.py')
+        out[('ft', d)] = (f'experiments/exp_024/configs/fullft_replayfree_{d}.py' if first
+                          else f'experiments/exp_040/configs/replayfree_{d}.py')
         out[('ewc', d)] = f'experiments/exp_045/configs/ewc_{d}.py'
         out[('inflora', d)] = f'experiments/exp_045/configs/inflora_{d}.py'
         out[('zira', d)] = (f'experiments/exp_039/configs/zira_replayfree_{d}.py' if first
@@ -86,8 +88,8 @@ if __name__ == '__main__':
     for p in eval_cfgs():
         if not os.path.exists(p):
             bad.append(f'eval: 無い {p}')
-    check(1, '学習 36 本・評価 config の存在と build', not bad,
-          f'学習 {len(cfgs)}/36' + (f' / {bad[:3]}' if bad else ''))
+    check(1, '学習 42 本・評価 config の存在と build', not bad,
+          f'学習 {len(cfgs)}/42' + (f' / {bad[:3]}' if bad else ''))
 
     # --- 2. --cfg-options の到達性 -------------------------------------------
     from mmengine.config import DictAction
@@ -99,7 +101,8 @@ if __name__ == '__main__':
         return ns.o
 
     bad = []
-    for key in [('ours', 'underwater'), ('er', 'aerial'), ('ewc', 'videogames'),
+    for key in [('ours', 'underwater'), ('er', 'aerial'), ('ft', 'documents'),
+                ('ewc', 'videogames'),
                 ('inflora', 'documents'), ('zira', 'underwater'), ('dithub', 'aerial')]:
         c = copy.deepcopy(cfgs[key])
         c.merge_from_dict(parse([
@@ -112,7 +115,7 @@ if __name__ == '__main__':
         if h['interval'] != 20 or h.get('save_optimizer') is not False:
             bad.append(f'{key}: checkpoint 上書きが届かない')
     check(2, 'randomness.seed=1 と ckpt 方針が全手法の config に届く', not bad,
-          f'{bad[:2]}' if bad else '6 手法で確認')
+          f'{bad[:2]}' if bad else '7 手法で確認')
 
     # --- 3. 補助スクリプトの --seed ------------------------------------------
     bad = []
