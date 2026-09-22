@@ -5,7 +5,7 @@
 _base_ = '/workspace/kouyou/mmdetection/experiments/exp_040/configs/replay_aerial.py'
 
 train_dataloader = \
-{'batch_size': 6,
+{'batch_size': 8,
  'num_workers': 4,
  'persistent_workers': True,
  'sampler': {'type': 'CurrentEpochMultiSourceSampler', 'batch_size': 8, 'source_ratio': [4, 2, 2]},

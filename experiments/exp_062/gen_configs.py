@@ -74,10 +74,17 @@ for method in METHODS:
             else:
                 n = 0
             # (2) 内訳の上書き（t>=2 のみ [4,2,2] batch 8。t=1 は base のまま）
+            #   ★ sampler と DataLoader 本体の両方の batch_size を揃えること。
+            #     sampler だけ 8 にすると DataLoader が 6 個ずつに切り直し、2 バッチ目
+            #     以降で内訳がずれる（2026-09-22 に ours_b3/electromagnetic の
+            #     _assert_buffer_slice 発火で発覚。1-step 検証では初回バッチしか
+            #     見ないため検出不能だった）。
             if t >= 2:
                 assert dl['sampler']['source_ratio'] == [4, 1, 1], (dom, dl['sampler'])
+                assert dl['batch_size'] == 6, (dom, dl['batch_size'])
                 dl['sampler']['source_ratio'] = [4, 2, 2]
                 dl['sampler']['batch_size'] = 8
+                dl['batch_size'] = 8
             dl['_delete_'] = True
             body = f'''# exp_062 バッチ内訳感度 {method}/{cond}（内訳 [4,2,2] batch8・t>=2）/ {dom}（t={t}）
 # 【自動生成】experiments/exp_062/gen_configs.py。直接編集しない。
